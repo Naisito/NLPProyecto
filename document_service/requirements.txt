@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pdfplumber
+python-docx
+aiofiles
+pydantic
+chromadb
+sentence-transformers
+pytest
+httpx
+openai
+pytesseract
+Pillow

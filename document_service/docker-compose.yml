@@ -1,0 +1,14 @@
+services:
+  document_service:
+    build: .
+    container_name: document_service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./db:/app/db
+      - ./models_cache:/app/models_cache
+      - ./app:/app/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
