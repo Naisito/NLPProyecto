@@ -1,0 +1,56 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "log_level": "INFO"
+  },
+  "embeddings": {
+    "provider": "huggingface",
+    "model_name": "BAAI/bge-m3",
+    "cache_dir": "models_cache"
+  },
+  "reranker": {
+    "model_name": "cross-encoder/ms-marco-multilingual-MiniLM-L12-v2",
+    "cache_dir": "models_cache",
+    "enabled": true
+  },
+  "vector_db": {
+    "provider": "chroma",
+    "path": "db/chroma_db",
+    "collection_name": "pois_turisticos"
+  },
+  "rag": {
+    "retrieval_k": 20,
+    "rerank_top_n": 12,
+    "min_score_threshold": 0.0
+  },
+  "planner": {
+    "slots": {
+      "manana": {"start": "09:30", "end": "14:00"},
+      "tarde": {"start": "16:00", "end": "20:00"}
+    },
+    "pois_per_day": {
+      "tranquilo": 3,
+      "moderado": 4,
+      "intenso": 6
+    },
+    "walking_speed_kmh": 4.5,
+    "avg_travel_minutes_intra_day": 15
+  },
+  "llm": {
+    "ollama_base_url": "http://localhost:11434",
+    "ollama_model_name": "llama3.2",
+    "temperature_generation": 0.5,
+    "temperature_interpretation": 0.1,
+    "max_tokens_generation": 800
+  },
+  "poi_data": {
+    "path": "data/pois_bilbao_bizkaia.json"
+  },
+  "scoring_weights": {
+    "semantic": 0.30,
+    "rerank": 0.35,
+    "preference_match": 0.25,
+    "spatial_diversity": 0.10
+  }
+}
