@@ -1,0 +1,48 @@
+# ============================================================
+# Generador de Rutas Turísticas — Bilbao / Bizkaia
+# Dependencias del sistema (backend + frontend)
+# ============================================================
+
+# --- API REST ---
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+
+# --- Validación de datos ---
+pydantic>=2.6.0
+
+# --- Embeddings (BAAI/bge-m3) ---
+sentence-transformers>=2.6.0
+torch>=2.0.0
+
+# --- Reranking (cross-encoder) ---
+# sentence-transformers ya incluye CrossEncoder
+
+# --- Índice vectorial ---
+chromadb>=0.4.22
+
+# --- LLM (Ollama local, via API compatible con OpenAI) ---
+# La librería 'openai' se reutiliza apuntando a http://localhost:11434/v1
+# No se necesita API key. Instala Ollama desde https://ollama.com
+openai>=1.14.0
+
+# --- Cliente HTTP (para Streamlit → API) ---
+httpx>=0.26.0
+
+# --- Frontend Streamlit ---
+streamlit>=1.32.0
+
+# --- Mapa interactivo (opcional pero recomendado) ---
+folium>=0.16.0
+streamlit-folium>=0.20.0
+
+# --- Científico ---
+numpy>=1.24.0
+
+# ============================================================
+# Instalación:
+#   pip install -r requirements.txt
+#
+# Para el mapa interactivo (opcional):
+#   pip install folium streamlit-folium
+# ============================================================

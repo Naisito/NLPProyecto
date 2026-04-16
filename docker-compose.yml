@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  # ── Backend: API FastAPI ───────────────────────────────────
+  api:
+    build: .
+    container_name: turismo_api
+    ports:
+      - "9000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./db:/app/db
+      - ./models_cache:/app/models_cache
+      - ./config.json:/app/config.json
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Usar modelos HuggingFace ya descargados en models_cache/ sin llamar a la red
+      - HF_HUB_OFFLINE=1
+      # Ollama corre en el HOST (fuera del contenedor).
+      # host.docker.internal resuelve al host en Windows/Mac.
+      # En Linux añade extra_hosts (ver abajo) para que funcione igual.
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # necesario en Linux
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Frontend: Streamlit ───────────────────────────────────
+  frontend:
+    build: .
+    container_name: turismo_frontend
+    command: streamlit run frontend/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "9001:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+      # El frontend llama a la API por la red interna de Docker (sin salir al host)
+      - API_BASE_URL=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
