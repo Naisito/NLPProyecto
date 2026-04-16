@@ -12,7 +12,7 @@
   "reranker": {
     "model_name": "cross-encoder/ms-marco-multilingual-MiniLM-L12-v2",
     "cache_dir": "models_cache",
-    "enabled": true
+    "enabled": false
   },
   "vector_db": {
     "provider": "chroma",

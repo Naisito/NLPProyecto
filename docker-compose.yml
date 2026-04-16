@@ -14,11 +14,12 @@ services:
       - ./config.json:/app/config.json
     environment:
       - PYTHONUNBUFFERED=1
-      # Usar modelos HuggingFace ya descargados en models_cache/ sin llamar a la red
-      - HF_HUB_OFFLINE=1
+      # Activar descarga de modelos HuggingFace en el arranque (solo API)
+      - RUN_PREFETCH=1
+      # HF_HOME apunta al volumen montado: descarga una vez, reutiliza siempre
+      - HF_HOME=/app/models_cache
       # Ollama corre en el HOST (fuera del contenedor).
       # host.docker.internal resuelve al host en Windows/Mac.
-      # En Linux añade extra_hosts (ver abajo) para que funcione igual.
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"   # necesario en Linux
@@ -33,12 +34,13 @@ services:
   frontend:
     build: .
     container_name: turismo_frontend
+    # RUN_PREFETCH no está definido → entrypoint.sh salta la descarga
     command: streamlit run frontend/app.py --server.port 8501 --server.address 0.0.0.0
     ports:
       - "9001:8501"
     environment:
       - PYTHONUNBUFFERED=1
-      # El frontend llama a la API por la red interna de Docker (sin salir al host)
+      # El frontend llama a la API por la red interna de Docker
       - API_BASE_URL=http://api:8000
     depends_on:
       - api

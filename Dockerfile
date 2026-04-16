@@ -18,8 +18,13 @@ COPY . .
 # Crear directorios de datos
 RUN mkdir -p db/chroma_db models_cache
 
+# Permisos de ejecución del entrypoint
+RUN chmod +x /app/entrypoint.sh
+
 EXPOSE 8000
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# entrypoint.sh: descarga modelos si RUN_PREFETCH=1 → ejecuta CMD
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

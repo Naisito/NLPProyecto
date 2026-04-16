@@ -16,7 +16,7 @@ El sistema funciona **100% en local**: no requiere claves de API externas ni con
 4. [Estructura del proyecto](#4-estructura-del-proyecto)
 5. [Instalación](#5-instalación)
 6. [Configuración](#6-configuración)
-7. [Ejecución](#7-ejecución)
+7. [Ejecución desde cero](#7-ejecución)
 8. [API REST](#8-api-rest)
 9. [Métricas de evaluación](#9-métricas-de-evaluación)
 10. [Corpus de datos](#10-corpus-de-datos)
@@ -149,6 +149,8 @@ Proyecto/
 +-- requirements.txt               # Dependencias Python
 +-- Dockerfile
 +-- docker-compose.yml             # Backend + frontend (Ollama corre en el host)
++-- entrypoint.sh                  # Script de arranque del contenedor
++-- prefetch_models.py             # Descarga modelos HuggingFace si no están en caché
 |
 +-- data/
 |   +-- pois_bilbao_bizkaia.json  # 40 POIs de Bilbao y Bizkaia
@@ -318,41 +320,152 @@ Edita `config.json` antes de arrancar el sistema. Los campos más importantes:
 
 ## 7. Ejecución
 
-### Paso 0 — Arrancar Ollama
+Hay dos formas de ejecutar el sistema: **local** (desarrollo) o **Docker** (recomendado para despliegue).
 
+---
+
+### Opción A — Ejecución local (desarrollo)
+
+#### Paso 1 — Ollama
+
+En Windows, Ollama arranca automáticamente como servicio tras la instalación. Verifica que está corriendo:
+
+```bash
+ollama list
+```
+
+Si no está corriendo:
 ```bash
 ollama serve
 ```
 
-En Windows, Ollama arranca automáticamente como servicio tras la instalación. Puedes verificarlo con `ollama list`.
-
-### Paso 1 — Arrancar el backend
+#### Paso 2 — Arrancar el backend
 
 ```bash
+# Desde el directorio del proyecto, con el entorno virtual activado
 uvicorn app.main:app --reload --port 8000
 ```
 
-La primera vez descargará los modelos HuggingFace (~2 GB, puede tardar varios minutos). Salida esperada en consola:
+La primera vez descarga los modelos HuggingFace (~2 GB). Salida esperada:
 
 ```
-INFO — Iniciando sistema RAG turistico...
-INFO — Cargando modelo de embeddings 'BAAI/bge-m3'...
-INFO — Modelo de embeddings cargado correctamente.
-INFO — Cross-encoder 'cross-encoder/ms-marco-multilingual-MiniLM-L12-v2' cargado.
-INFO — 40 POIs cargados en memoria.
-INFO — POIs indexados correctamente en ChromaDB.
+[prefetch] Descargando modelos en models_cache/ ...
+[prefetch]   → BAAI/bge-m3
+[prefetch]   → cross-encoder/ms-marco-multilingual-MiniLM-L12-v2
+[prefetch] ✅ Modelos listos.
+INFO — 40 POIs cargados y listos.
 INFO — Sistema listo en X.Xs.
 ```
 
-Las siguientes ejecuciones usarán la caché de modelos y el índice ChromaDB existente, arrancando en segundos.
+Las siguientes ejecuciones detectan los modelos en caché y arrancan en segundos:
+```
+[prefetch] ✅ Modelos ya en caché. Saltando descarga.
+INFO — Sistema listo en X.Xs.
+```
 
-### Paso 2 — Arrancar el frontend (otra terminal)
+#### Paso 3 — Arrancar el frontend (otra terminal)
 
 ```bash
 streamlit run frontend/app.py
 ```
 
 Abre http://localhost:8501 en tu navegador.
+
+---
+
+### Opción B — Docker Compose (recomendado)
+
+#### Paso 1 — Ollama con acceso desde contenedores
+
+Docker no puede acceder a `localhost` del host. Debes arrancar Ollama escuchando en todas las interfaces:
+
+**Windows (PowerShell):**
+```powershell
+$env:OLLAMA_HOST='0.0.0.0:11434'; ollama serve
+```
+
+**Windows (cmd.exe):**
+```batch
+set OLLAMA_HOST=0.0.0.0:11434 && ollama serve
+```
+
+**Linux/Mac:**
+```bash
+OLLAMA_HOST=0.0.0.0:11434 ollama serve
+```
+
+Confirma que está bien cuando veas: `Listening on [::]:11434`
+
+#### Paso 2 — Primera ejecución (build + descarga de modelos)
+
+```bash
+docker-compose up --build
+```
+
+El contenedor ejecuta automáticamente `prefetch_models.py` antes de arrancar la API:
+
+```
+turismo_api  | [prefetch] Descargando modelos en /app/models_cache ...
+turismo_api  |   → BAAI/bge-m3            (~1.5 GB, puede tardar varios minutos)
+turismo_api  |   → cross-encoder/...      (~300 MB)
+turismo_api  | [prefetch] ✅ Modelos listos. Caché guardada en volumen.
+turismo_api  | INFO — Sistema listo en X.Xs.
+```
+
+Los modelos se guardan en el volumen `./models_cache/`. Si paras y reinicias, no se vuelven a descargar.
+
+#### Paso 3 — Ejecuciones siguientes
+
+```bash
+docker-compose up
+```
+
+Sin `--build` si el código no ha cambiado. El arranque detecta la caché y salta la descarga:
+
+```
+turismo_api  | [prefetch] ✅ Modelos ya en caché. Saltando descarga.
+turismo_api  | INFO — Sistema listo en X.Xs.
+```
+
+#### URLs
+
+| Servicio | URL |
+|----------|-----|
+| Frontend Streamlit | http://localhost:9001 |
+| API REST | http://localhost:9000 |
+| Swagger / docs | http://localhost:9000/docs |
+
+#### Forzar re-descarga de modelos
+
+Si quieres que los modelos se vuelvan a descargar (versión nueva, caché corrupta):
+
+```bash
+# Borrar el marcador de caché
+del models_cache\.models_ready        # Windows
+rm models_cache/.models_ready         # Linux/Mac
+
+# Reiniciar (descargará de nuevo automáticamente)
+docker-compose up
+```
+
+O para borrar toda la caché:
+```bash
+rmdir /s /q models_cache   # Windows
+rm -rf models_cache/       # Linux/Mac
+docker-compose up
+```
+
+---
+
+### Notas sobre puertos en Windows
+
+Windows (Hyper-V/WSL2) reserva rangos de puertos que Docker no puede usar. Si ves el error `bind: Intento de acceso a un socket no permitido`, comprueba los puertos excluidos con:
+
+```powershell
+netsh interface ipv4 show excludedportrange protocol=tcp
+```
+
+Los puertos configurados actualmente (9000 y 9001) están fuera de los rangos reservados habituales. Si necesitas cambiarlos, edita `docker-compose.yml`.
 
 ### Uso via API REST (curl)
 
