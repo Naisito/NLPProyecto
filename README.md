@@ -153,7 +153,11 @@ Proyecto/
 +-- prefetch_models.py             # Descarga modelos HuggingFace si no están en caché
 |
 +-- data/
-|   +-- pois_bilbao_bizkaia.json  # 40 POIs de Bilbao y Bizkaia
+|   +-- pois_bilbao_bizkaia.json  # 394 POIs de Bilbao y Bizkaia
+|   +-- README.md                 # Proceso de ampliación y regeneración del corpus
+|
++-- scripts/
+|   +-- expand_bilbao_corpus.py   # Regeneración reproducible de POIs de Bilbao desde OSM
 |
 +-- app/                           # Backend FastAPI
 |   +-- main.py                    # Endpoints REST + ciclo de vida
@@ -353,7 +357,7 @@ La primera vez descarga los modelos HuggingFace (~2 GB). Salida esperada:
 [prefetch]   → BAAI/bge-m3
 [prefetch]   → cross-encoder/ms-marco-multilingual-MiniLM-L12-v2
 [prefetch] ✅ Modelos listos.
-INFO — 40 POIs cargados y listos.
+INFO — 394 POIs cargados y listos.
 INFO — Sistema listo en X.Xs.
 ```
 
@@ -582,7 +586,7 @@ Las métricas se calculan automáticamente para cada ruta generada y se incluyen
 
 ## 10. Corpus de datos
 
-`data/pois_bilbao_bizkaia.json` contiene **40 Puntos de Interés** de Bilbao y Bizkaia recopilados de fuentes oficiales y abiertas.
+`data/pois_bilbao_bizkaia.json` contiene **394 Puntos de Interés** de Bilbao y Bizkaia recopilados de fuentes oficiales y abiertas. Tras la ampliación del corpus, **374** de ellos pertenecen al municipio de Bilbao. El detalle del proceso está documentado en `data/README.md`.
 
 ### Fuentes de datos
 
@@ -598,7 +602,7 @@ Las métricas se calculan automáticamente para cada ruta generada y se incluyen
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `id` | string | Identificador único (`poi_001`...`poi_040`) |
+| `id` | string | Identificador único (`poi_001`...`poi_394`) |
 | `name` | string | Nombre del punto de interés |
 | `municipality` | string | Municipio (Bilbao, Getxo, Bermeo...) |
 | `category` | string | Categoría principal |
