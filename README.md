@@ -153,11 +153,11 @@ Proyecto/
 +-- prefetch_models.py             # Descarga modelos HuggingFace si no están en caché
 |
 +-- data/
-|   +-- pois_bilbao_bizkaia.json  # 394 POIs de Bilbao y Bizkaia
-|   +-- README.md                 # Proceso de ampliación y regeneración del corpus
+|   +-- pois_bilbao_bizkaia.json  # 1109 POIs de Bilbao y Bizkaia
+|   +-- README.md                 # Documentación del corpus ampliado
 |
 +-- scripts/
-|   +-- expand_bilbao_corpus.py   # Regeneración reproducible de POIs de Bilbao desde OSM
+|   +-- expand_bilbao_corpus.py   # Regeneración reproducible del corpus
 |
 +-- app/                           # Backend FastAPI
 |   +-- main.py                    # Endpoints REST + ciclo de vida
@@ -357,7 +357,7 @@ La primera vez descarga los modelos HuggingFace (~2 GB). Salida esperada:
 [prefetch]   → BAAI/bge-m3
 [prefetch]   → cross-encoder/ms-marco-multilingual-MiniLM-L12-v2
 [prefetch] ✅ Modelos listos.
-INFO — 394 POIs cargados y listos.
+INFO — N POIs cargados y listos.
 INFO — Sistema listo en X.Xs.
 ```
 
@@ -586,23 +586,21 @@ Las métricas se calculan automáticamente para cada ruta generada y se incluyen
 
 ## 10. Corpus de datos
 
-`data/pois_bilbao_bizkaia.json` contiene **394 Puntos de Interés** de Bilbao y Bizkaia recopilados de fuentes oficiales y abiertas. Tras la ampliación del corpus, **374** de ellos pertenecen al municipio de Bilbao. El detalle del proceso está documentado en `data/README.md`.
+`data/pois_bilbao_bizkaia.json` contiene el **corpus completo** del proyecto con **1109 Puntos de Interés** de Bilbao y Bizkaia, de los cuales **465** están en Bilbao. La aplicación carga este fichero directamente al arrancar, sin llamadas externas ni procesos de ampliación en runtime. El detalle del proceso de regeneración y deduplicado está documentado en `data/README.md`.
 
 ### Fuentes de datos
 
 | Fuente | Tipo de recurso | Uso previsto |
 |--------|----------------|--------------|
-| Open Data Euskadi | Dataset georreferenciado oficial | Base de POIs: nombre, tipo, localización |
-| Bilbao Turismo | Web turística oficial | Horarios, precios, categorías, descripciones |
-| Visit Biscay / Turismo Bizkaia | Web turística provincial | POIs fuera de Bilbao ciudad |
-| OpenStreetMap | Base geoespacial abierta | Coordenadas y validación geográfica |
-| Wikidata | Base de conocimiento abierta | Enlazado semántico |
+| OpenStreetMap Overpass + Nominatim | Base geoespacial abierta | Capa base de POIs geolocalizados de Bilbao |
+| Open Data Euskadi / Open Data Bilbao | Dataset georreferenciado oficial | Lugares de interés turístico oficiales de Bilbao |
+| Wikidata SPARQL | Base de conocimiento abierta | Ampliación masiva de patrimonio, monumentos y POIs de Bilbao/Bizkaia |
 
 ### Campos de cada POI
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `id` | string | Identificador único (`poi_001`...`poi_394`) |
+| `id` | string | Identificador único (`poi_001`...`poi_N`) |
 | `name` | string | Nombre del punto de interés |
 | `municipality` | string | Municipio (Bilbao, Getxo, Bermeo...) |
 | `category` | string | Categoría principal |
@@ -622,7 +620,7 @@ Las métricas se calculan automáticamente para cada ruta generada y se incluyen
 
 ### Municipios cubiertos
 
-Bilbao · Getxo · Bermeo · Sopelana · Mundaka · Gernika-Lumo · Kortezubi · Ibarrangelu · Lekeitio · Ondarroa · Bakio · Gatika · Balmaseda · Durango · Abadiano · Abanto-Zierbena
+El corpus cubre Bilbao y decenas de municipios de Bizkaia. La lista exacta depende del JSON regenerado y puede consultarse en `/api/stats` o directamente en `data/pois_bilbao_bizkaia.json`.
 
 ---
 

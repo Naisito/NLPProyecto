@@ -168,6 +168,7 @@ def stats():
         "categories":     poi_mgr.get_categories(),
         "municipalities": poi_mgr.get_municipalities(),
         "index_vectors":  _get("vector_store").count(),
+        "corpus_load":    poi_mgr.load_summary,
     }
 
 

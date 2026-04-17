@@ -467,7 +467,7 @@ def page_generator():
 
 def page_explore():
     st.title("🔍 Explorar Puntos de Interés")
-    st.caption("Busca y filtra los 40 POIs de Bilbao y Bizkaia")
+    st.caption("Busca y filtra el corpus completo de Bilbao y Bizkaia")
 
     col_search, col_filters = st.columns([3, 2])
     with col_search:

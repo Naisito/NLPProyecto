@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 
 class EmbeddingClient(ABC):
@@ -28,7 +28,7 @@ class VectorIndex(ABC):
         n_results: int,
         filters: Optional[Dict] = None,
     ) -> List[str]:
-        """Busca los fragmentos más cercanos. Devuelve IDs."""
+        """Busca los fragmentos mas cercanos. Devuelve IDs."""
         pass
 
     @abstractmethod
@@ -53,5 +53,10 @@ class VectorIndex(ABC):
 
     @abstractmethod
     def clear(self):
-        """Vacía completamente el índice."""
+        """Vacia completamente el indice."""
+        pass
+
+    @abstractmethod
+    def count(self) -> int:
+        """Devuelve el numero total de vectores almacenados."""
         pass

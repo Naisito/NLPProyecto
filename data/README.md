@@ -1,120 +1,139 @@
-# Corpus de POIs de Bilbao / Bizkaia
+# Corpus de POIs
 
-## Objetivo
+## Estado actual
 
-Ampliar el corpus `pois_bilbao_bizkaia.json` para aumentar de forma clara la cobertura de **POIs del municipio de Bilbao** manteniendo el mismo esquema que ya consume la aplicación.
+El fichero [pois_bilbao_bizkaia.json](<d:/MASTER/MPL/NLPProyecto/data/pois_bilbao_bizkaia.json>) contiene el corpus completo que usa la aplicación en runtime.
 
-## Resultado
+- Total de POIs: `1109`
+- POIs de Bilbao: `465`
+- POIs del resto de Bizkaia: `644`
+- Fuentes integradas:
+  - `342` de `OpenStreetMap Overpass`
+  - `74` de `Open Data Euskadi`
+  - `693` de `Wikidata`
 
-- Antes: `40` POIs totales, de los cuales `20` eran de Bilbao.
-- Después: `394` POIs totales, de los cuales `374` son de Bilbao.
-- Incremento en Bilbao: `+354` POIs nuevos.
+La aplicación no hace llamadas externas para completar el corpus al arrancar. Igual que antes cargaba un JSON pequeño, ahora carga directamente este JSON ampliado y reindexa solo si detecta que ha cambiado.
 
-La ampliación se hizo el **2026-04-17** con un flujo reproducible y no manual.
+## Qué he hecho
 
-## Ficheros implicados
+1. He eliminado la dependencia de una base manual de 40 POIs como punto de partida conceptual.
+2. He dejado [pois_bilbao_bizkaia.json](<d:/MASTER/MPL/NLPProyecto/data/pois_bilbao_bizkaia.json>) como fuente única de verdad para la app.
+3. He añadido un generador reproducible en [scripts/expand_bilbao_corpus.py](<d:/MASTER/MPL/NLPProyecto/scripts/expand_bilbao_corpus.py>) para reconstruir el corpus.
+4. He ampliado el corpus con dos fuentes estructuradas nuevas y masivas:
+   - Open Data Euskadi / Open Data Bilbao
+   - Wikidata
+5. He mantenido la carga en runtime totalmente local, sin llamadas HTTP al arrancar.
 
-- `data/pois_bilbao_bizkaia.json`
-- `scripts/expand_bilbao_corpus.py`
+## Cómo se ha construido
 
-## Cómo lo he hecho
+El proceso ya no parte de POIs escritos a mano. Parte de fuentes abiertas y normaliza todo al mismo esquema del proyecto.
 
-1. Partí del corpus existente y mantuve intactos los 40 registros originales.
-2. Obtuve el límite administrativo real de Bilbao con **Nominatim** para no depender sólo de un rectángulo geográfico.
-3. Consulté **OpenStreetMap** a través de **Overpass** para descargar candidatos dentro del bbox de Bilbao.
-4. Filtré los elementos descargados para quedarme con POIs visitables o útiles para recuperación turística:
-   - `tourism`: `museum`, `gallery`, `attraction`, `artwork`, `viewpoint`
-   - `historic`: `monument`, `memorial`, `castle`, `archaeological_site`, `ruins`, `building`
-   - `amenity`: `theatre`, `arts_centre`, `cinema`, `marketplace`, `place_of_worship`
-   - `leisure`: `park`, `garden`
-   - `man_made`: `bridge`
-5. Eliminé ruido básico:
-   - Alojamientos (`hotel`, `hostel`, `guest_house`, etc.)
-   - Elementos privados
-   - Elementos abandonados o fuera del polígono real de Bilbao
-6. Hice deduplicado contra el corpus previo y entre nuevos candidatos:
-   - Coincidencia exacta por nombre normalizado
-   - Coincidencia aproximada por nombre + proximidad geográfica + categoría
-7. Normalicé cada candidato al esquema del proyecto:
-   - `category` y `subcategory`
-   - `description`
-   - `coordinates`
-   - `address`
-   - `price` y `price_numeric`
-   - `schedule`
-   - `source`
-   - `url`
-   - `tags`
-   - `enriched_text`
-   - `visit_duration_minutes`
-   - `accessibility`
-8. Generé texto semántico adicional para mejorar la recuperación vectorial sin tocar la lógica del backend.
+### 1. Capa OSM
 
-## Heurísticas que he aplicado
+La parte de OpenStreetMap se reaprovecha desde la capa ya materializada en el JSON, que a su vez procede de Overpass. He dejado esa capa como base automática para no depender de la disponibilidad puntual del servicio Overpass cada vez que se regenere el corpus.
 
-Como OpenStreetMap no siempre trae todos los campos que necesita el proyecto, añadí reglas sencillas y reproducibles:
+### 2. Open Data Euskadi
 
-- `schedule`:
-  - POIs exteriores como puentes, parques, miradores, esculturas o memoriales: `00:00–23:59`
-  - Museos: lunes cerrado y horario tipo `10:00–19:00`
-  - Mercados: horario tipo `08:30–14:30`
-  - Equipamientos culturales y religiosos: horario genérico compatible con itinerarios diurnos
-- `price`:
-  - Espacios exteriores y abiertos: `gratis`
-  - Museos y espacios culturales con `fee=yes` o sin dato fiable: precio bajo estimado para no romper el planificador
-- `visit_duration_minutes`:
-  - Según tipo de POI: museo, parque, mercado, arte público, monumento, etc.
-- `accessibility`:
-  - Se respeta `wheelchair=*` cuando existe
-  - Si no existe, se asigna un valor heurístico por categoría
+El script descarga el RDF oficial de lugares de interés turístico de Bilbao:
 
-Estas reglas están pensadas para que el corpus siga siendo utilizable por el planificador y el recuperador, no para sustituir una curación editorial completa.
+- `https://www.bilbao.eus/bilbaoopendata/turismo/lugares_interes_turistico.rdf`
 
-## Script de regeneración
+Con esa fuente:
 
-El proceso queda automatizado en:
+- se extraen nombre, dirección y tipo oficial
+- se convierten las coordenadas UTM del RDF a WGS84
+- se mapean los tipos al esquema del proyecto
+- se eliminan duplicados contra OSM
+
+Resultado en esta iteración: `74` POIs nuevos útiles tras deduplicado.
+
+### 3. Wikidata
+
+El script consulta Wikidata por lotes usando SPARQL para clases turísticas y patrimoniales relevantes de Bilbao y Bizkaia.
+
+Ejemplos de clases consultadas:
+
+- museos
+- puentes
+- parques y jardines
+- monumentos
+- esculturas y estatuas
+- iglesias, ermitas y monasterios
+- castillos y sitios arqueológicos
+- patrimonio industrial
+- faros, palacios, miradores y funiculares
+
+Después del fetch:
+
+- se parsean coordenadas geográficas
+- se normalizan nombres y municipios
+- se filtran elementos poco útiles para turismo
+  - bibliotecas genéricas
+  - vértices geodésicos
+  - fosas comunes
+  - elementos claramente funerarios o administrativos
+- se deduplican contra OSM y Open Data
+
+Resultado en esta iteración: `693` POIs añadidos desde Wikidata.
+
+### 4. Deduplicado global
+
+El deduplicado se hace con varias señales:
+
+- nombre normalizado
+- solapamiento de tokens significativos
+- distancia geográfica
+- categoría compatible
+
+Así evitamos meter varias veces el mismo museo, puente o monumento aunque aparezca en más de una fuente.
+
+### 5. Normalización final
+
+Todos los registros acaban con el mismo esquema:
+
+- `id`
+- `name`
+- `municipality`
+- `category`
+- `subcategory`
+- `description`
+- `coordinates`
+- `address`
+- `price` y `price_numeric`
+- `schedule`
+- `source`
+- `url`
+- `tags`
+- `enriched_text`
+- `visit_duration_minutes`
+- `accessibility`
+
+## Qué carga ahora la app
+
+[app/poi_manager.py](<d:/MASTER/MPL/NLPProyecto/app/poi_manager.py>) carga directamente el JSON final, lo convierte a objetos `POI` y reindexa ChromaDB solo cuando cambia la firma del corpus.
+
+No hay:
+
+- ampliación dinámica en runtime
+- llamadas HTTP al arrancar
+- caché temporal del corpus descargado
+
+## Cómo regenerarlo
+
+Desde la raíz del proyecto:
 
 ```bash
 python scripts/expand_bilbao_corpus.py
 ```
 
-Modo sólo resumen:
+Si solo quieres ver el resumen sin escribir el fichero:
 
 ```bash
 python scripts/expand_bilbao_corpus.py --dry-run
 ```
 
-El script:
+## Criterio de cantidad
 
-- descarga el polígono de Bilbao desde Nominatim
-- consulta Overpass con reintentos automáticos
-- filtra y deduplica
-- escribe el JSON final en `data/pois_bilbao_bizkaia.json`
+Para este proyecto, una cantidad "buena" de POIs útiles y todavía razonablemente limpia está en torno a `600-800`.
 
-## Validación realizada
-
-Tras regenerar el fichero comprobé:
-
-- que el JSON carga correctamente
-- que hay `394` IDs únicos
-- que todos los POIs tienen las claves esperadas
-- que `schedule` contiene los 7 días en el formato que espera el proyecto
-
-## Nota importante sobre el índice vectorial
-
-El corpus ya está actualizado, pero si el sistema ya tenía una base ChromaDB previa, hay que **reindexar** para que los nuevos POIs entren en búsqueda semántica.
-
-Opciones:
-
-```bash
-# Si la API está levantada
-curl -X POST http://localhost:8000/api/admin/reindex
-```
-
-o bien borrar/regenerar la base de `db/chroma_db` si se quiere reconstruir desde cero en el siguiente arranque.
-
-## Fuentes utilizadas
-
-- OpenStreetMap Nominatim: https://nominatim.openstreetmap.org/
-- OpenStreetMap Overpass API: https://overpass-api.de/
-- OpenStreetMap: https://www.openstreetmap.org/
+He dejado el corpus en `1109` porque el objetivo aquí era maximizar cobertura y eliminar la dependencia de la base manual. Aun así, el script ya filtra bastante ruido y deja fuera varios tipos que empeoraban la calidad para turismo.
