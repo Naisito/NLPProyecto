@@ -131,13 +131,25 @@ class POIRanker:
     def _load_cross_encoder(self, model_name: str, cache_dir: str):
         try:
             import os
-            os.makedirs(cache_dir, exist_ok=True)
+            from huggingface_hub import snapshot_download
             from sentence_transformers.cross_encoder import CrossEncoder
-            self.cross_encoder = CrossEncoder(model_name, max_length=512)
+
+            os.makedirs(cache_dir, exist_ok=True)
+            model_path = snapshot_download(
+                repo_id=model_name,
+                cache_dir=cache_dir,
+                local_files_only=True,
+            )
+            self.cross_encoder = CrossEncoder(
+                model_path,
+                max_length=512,
+                local_files_only=True,
+            )
             logger.info(f"Cross-encoder '{model_name}' cargado correctamente.")
         except Exception as e:
             logger.warning(f"No se pudo cargar el cross-encoder: {e}. Se usará sólo el score semántico.")
             self.cross_encoder = None
+
 
     @property
     def reranker_loaded(self) -> bool:

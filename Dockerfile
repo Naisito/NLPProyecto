@@ -18,8 +18,8 @@ COPY . .
 # Crear directorios de datos
 RUN mkdir -p db/chroma_db models_cache
 
-# Permisos de ejecución del entrypoint
-RUN chmod +x /app/entrypoint.sh
+# Normalizar fin de línea y dar permisos de ejecución al entrypoint
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 

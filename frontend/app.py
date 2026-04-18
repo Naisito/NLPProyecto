@@ -22,7 +22,39 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 # Configuración general
 # ---------------------------------------------------------------------------
-API_BASE = os.environ.get("API_BASE_URL", "http://localhost:8000")
+def _resolve_api_base() -> str:
+    """
+    Resuelve la URL base de la API.
+
+    Prioridad:
+    1. `API_BASE_URL` si viene por entorno.
+    2. Auto-detección local, útil cuando Streamlit se lanza fuera de Docker
+       pero la API corre en Docker mapeada al puerto 9000.
+    3. Fallback final a localhost:8000.
+    """
+    env_value = os.environ.get("API_BASE_URL")
+    if env_value:
+        return env_value.rstrip("/")
+
+    candidates = [
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:9000",
+        "http://127.0.0.1:9000",
+    ]
+
+    for candidate in candidates:
+        try:
+            response = httpx.get(f"{candidate}/api/health", timeout=2.0)
+            if response.status_code < 500:
+                return candidate
+        except Exception:
+            continue
+
+    return "http://localhost:8000"
+
+
+API_BASE = _resolve_api_base()
 
 st.set_page_config(
     page_title="Rutas Bilbao / Bizkaia",

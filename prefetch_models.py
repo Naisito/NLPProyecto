@@ -25,18 +25,79 @@ try:
 except Exception as e:
     print(f"[prefetch] No se pudo leer config.json: {e}. Usando valores por defecto.")
     EMBED_MODEL  = "BAAI/bge-m3"
-    RERANK_MODEL = "cross-encoder/ms-marco-multilingual-MiniLM-L12-v2"
+    RERANK_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
     RERANK_ON    = True
 
 
+def _model_slug(model_name: str) -> str:
+    return "models--" + model_name.replace("/", "--")
+
+
+def _model_cache_dirs(model_name: str) -> list[str]:
+    slug = _model_slug(model_name)
+    return [
+        os.path.join(HF_HOME, slug),
+        os.path.join(HF_HOME, "hub", slug),
+    ]
+
+
+def _snapshot_exists(
+    model_name: str,
+    required_files: list[str],
+    weight_files: list[str] | None = None,
+) -> bool:
+    """Comprueba si existe al menos un snapshot local utilizable para un modelo."""
+    for model_dir in _model_cache_dirs(model_name):
+        snapshots_dir = os.path.join(model_dir, "snapshots")
+        if not os.path.isdir(snapshots_dir):
+            continue
+
+        for snapshot_name in os.listdir(snapshots_dir):
+            snapshot_dir = os.path.join(snapshots_dir, snapshot_name)
+            if not os.path.isdir(snapshot_dir):
+                continue
+
+            has_required = all(
+                os.path.exists(os.path.join(snapshot_dir, filename))
+                for filename in required_files
+            )
+            if not has_required:
+                continue
+
+            if weight_files is None:
+                return True
+
+            has_any_weight = any(
+                os.path.exists(os.path.join(snapshot_dir, filename))
+                for filename in weight_files
+            )
+            if has_any_weight:
+                return True
+
+    return False
+
+
 def models_ready() -> bool:
-    """Devuelve True si el marcador existe Y los ficheros del modelo de embeddings están."""
+    """Devuelve True si los modelos necesarios están completos en la caché."""
     if not os.path.exists(MARKER_FILE):
         return False
-    # Comprobación extra: que el directorio del modelo de embeddings exista
-    hub_dir = os.path.join(HF_HOME, "hub")
-    model_slug = "models--" + EMBED_MODEL.replace("/", "--")
-    return os.path.isdir(os.path.join(hub_dir, model_slug))
+
+    embeddings_ready = _snapshot_exists(
+        EMBED_MODEL,
+        required_files=["config.json"],
+        weight_files=["pytorch_model.bin", "model.safetensors"],
+    )
+    if not embeddings_ready:
+        return False
+
+    if not RERANK_ON:
+        return True
+
+    return _snapshot_exists(
+        RERANK_MODEL,
+        required_files=["config.json", "tokenizer.json"],
+        weight_files=["pytorch_model.bin", "model.safetensors"],
+    )
 
 
 def download():
@@ -45,8 +106,8 @@ def download():
     # --- Modelo de embeddings ---
     print(f"[prefetch]   → {EMBED_MODEL}")
     try:
-        from sentence_transformers import SentenceTransformer
-        SentenceTransformer(EMBED_MODEL, cache_folder=HF_HOME)
+        from huggingface_hub import snapshot_download
+        snapshot_download(repo_id=EMBED_MODEL, cache_dir=HF_HOME)
         print(f"[prefetch]   ✓ {EMBED_MODEL} listo.")
     except Exception as e:
         print(f"[prefetch]   ✗ Error descargando embeddings: {e}")
@@ -59,7 +120,7 @@ def download():
             from huggingface_hub import snapshot_download
             snapshot_download(
                 repo_id=RERANK_MODEL,
-                cache_dir=os.path.join(HF_HOME, "hub"),
+                cache_dir=HF_HOME,
             )
             print(f"[prefetch]   ✓ {RERANK_MODEL} listo.")
         except Exception as e:

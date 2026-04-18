@@ -151,28 +151,36 @@ class POIManager:
     def _index_all(self):
         """Genera embeddings del enriched_text de cada POI y los almacena."""
         pois = list(self._pois.values())
-        texts = [poi.enriched_text for poi in pois]
-        ids = [poi.id for poi in pois]
-        metadatas = [
-            {
-                "poi_id": poi.id,
-                "name": poi.name,
-                "category": poi.category,
-                "municipality": poi.municipality,
-                "price_numeric": poi.price_numeric,
-                "accessibility": int(poi.accessibility),
-            }
-            for poi in pois
-        ]
+        total = len(pois)
+        batch_size = 64
 
-        logger.info(f"Generando embeddings para {len(pois)} POIs…")
-        vectors = self.embedder.encode(texts)
-        self.vector_store.add_vectors(
-            ids=ids,
-            vectors=vectors,
-            metadatas=metadatas,
-            documents=texts,
-        )
+        logger.info(f"Generando embeddings para {total} POIs…")
+
+        for start in range(0, total, batch_size):
+            batch = pois[start : start + batch_size]
+            texts = [poi.enriched_text for poi in batch]
+            ids = [poi.id for poi in batch]
+            metadatas = [
+                {
+                    "poi_id": poi.id,
+                    "name": poi.name,
+                    "category": poi.category,
+                    "municipality": poi.municipality,
+                    "price_numeric": poi.price_numeric,
+                    "accessibility": int(poi.accessibility),
+                }
+                for poi in batch
+            ]
+
+            vectors = self.embedder.encode(texts)
+            self.vector_store.add_vectors(
+                ids=ids,
+                vectors=vectors,
+                metadatas=metadatas,
+                documents=texts,
+            )
+            logger.info(f"POIs indexados: {min(start + len(batch), total)}/{total}")
+
         logger.info("POIs indexados correctamente en ChromaDB.")
 
     def reindex(self):

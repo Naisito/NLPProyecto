@@ -10,9 +10,9 @@
     "cache_dir": "models_cache"
   },
   "reranker": {
-    "model_name": "cross-encoder/ms-marco-multilingual-MiniLM-L12-v2",
-    "cache_dir": "models_cache",
-    "enabled": false
+  "model_name": "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
+  "cache_dir": "models_cache",
+  "enabled": true
   },
   "vector_db": {
     "provider": "chroma",

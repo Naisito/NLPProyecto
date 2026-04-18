@@ -40,5 +40,10 @@ class LocalHuggingFaceEmbeddings(EmbeddingClient):
 
     def encode(self, texts: List[str]) -> List[List[float]]:
         """Genera embeddings normalizados L2 (cosine-ready)."""
-        embeddings = self.model.encode(texts, normalize_embeddings=True)
+        embeddings = self.model.encode(
+            texts,
+            batch_size=16,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+        )
         return embeddings.tolist()
