@@ -216,9 +216,19 @@ def generate_route(request: RouteRequest):
     )
 
     # ---- 2. Recuperación semántica (RAG) ------------------------------
+    # Ajuste dinámico: calcular cuántos candidatos necesitamos en función
+    # del número de días solicitados y el ritmo (pois por día).
+    per_day = planner.pois_per_day.get(preferences.pace, 4)
+    desired_total = preferences.duration_days * per_day
+    # Margen para compensar filtros y descartes posteriores
+    margin = 2
+    default_k = settings.rag.get("retrieval_k", 20)
+    dynamic_k = min(poi_mgr.total, max(default_k, int(desired_total * margin), desired_total + 8))
+    logger.info(f"Recuperando candidatos semánticos: desired={desired_total} margin={margin} k={dynamic_k}")
+
     candidates = retriever.retrieve(
         preferences=preferences,
-        k=settings.rag.get("retrieval_k", 20),
+        k=dynamic_k,
     )
 
     if not candidates:
@@ -231,11 +241,17 @@ def generate_route(request: RouteRequest):
     query_for_rerank = request.query or " ".join(preferences.interests) or "turismo Bilbao"
 
     # ---- 3. Reranking -------------------------------------------------
+    # Rerank: ajustar top_n también proporcionalmente para no recortar
+    # los candidatos necesarios para todos los días.
+    default_top_n = settings.rag.get("rerank_top_n", 12)
+    dynamic_top_n = min(poi_mgr.total, max(default_top_n, int(desired_total * margin)))
+    logger.info(f"Reranking: top_n={dynamic_top_n}")
+
     ranked = ranker.rank(
         candidates=candidates,
         preferences=preferences,
         query=query_for_rerank,
-        top_n=settings.rag.get("rerank_top_n", 12),
+        top_n=dynamic_top_n,
     )
 
     # ---- 4. Planificación del itinerario ------------------------------
