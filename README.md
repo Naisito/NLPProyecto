@@ -135,7 +135,7 @@ Modelo SOTA en benchmarks MTEB 2024 para recuperación semántica multilingüe (
 Cross-encoder entrenado en datos MS MARCO multilingüe. Analiza conjuntamente la consulta y el documento, ofreciendo mayor precisión que el bi-encoder para el paso de reranking final al coste de mayor cómputo. Referencia: Nogueira & Cho (2019).
 
 **Por qué Ollama:**
-Permite correr modelos LLM de forma local sin necesidad de claves de API ni conexión a internet. Expone una API compatible con OpenAI, lo que facilita la integración. Modelos recomendados: `llama3.2` (por defecto), `mistral`, `qwen2.5`.
+Permite correr modelos LLM de forma local sin necesidad de claves de API ni conexión a internet. Expone una API compatible con OpenAI, lo que facilita la integración. Modelos recomendados: `qwen3:8b` (configurado en `config.json`), `llama3.2`, `mistral`, `qwen2.5`.
 
 ---
 
@@ -209,6 +209,13 @@ Otros modelos compatibles (mejor calidad, más RAM):
 ollama pull mistral          # ~4 GB, muy buena calidad en español
 ollama pull qwen2.5          # ~4 GB, excelente multilingüe
 ollama pull llama3.1:8b      # ~5 GB, más capaz
+ollama pull qwen3:8b         # modelo configurado por defecto en el proyecto
+```
+
+Modelo usado en `config.json` (campo `llm.ollama_model_name`): `qwen3:8b` — descárgalo con:
+
+```bash
+ollama pull qwen3:8b
 ```
 
 ### 2. Instalación local del proyecto
