@@ -15,7 +15,7 @@ import json
 import logging
 import re
 from datetime import datetime
-from typing import List, Optional
+from typing import Generator, List, Optional
 
 from openai import OpenAI
 
@@ -57,6 +57,9 @@ def _extract_json(text: str) -> dict:
     texto introductorio, bloques markdown (```json ... ```) u otras cadenas.
     Los modelos locales son más propensos a incluir texto extra alrededor.
     """
+    # 0) Eliminar bloques <think>...</think> (qwen3 y otros modelos con thinking mode)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
     # 1) Intentar parsear directamente
     try:
         return json.loads(text.strip())
@@ -71,20 +74,26 @@ def _extract_json(text: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # 3) Buscar el primer objeto JSON con llaves balanceadas
-    start = text.find("{")
-    if start != -1:
+    # 3) Buscar todos los candidatos JSON con llaves balanceadas
+    pos = 0
+    while True:
+        start = text.find("{", pos)
+        if start == -1:
+            break
         depth = 0
+        end = start
         for i, ch in enumerate(text[start:], start):
             if ch == "{":
                 depth += 1
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    try:
-                        return json.loads(text[start : i + 1])
-                    except json.JSONDecodeError:
-                        break
+                    end = i
+                    break
+        try:
+            return json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            pos = start + 1
 
     raise ValueError(f"No se encontró JSON válido en la respuesta: {text[:200]}")
 
@@ -129,6 +138,8 @@ def interpret_preferences(query: str) -> UserPreferences:
     Si el LLM falla (Ollama no está corriendo, timeout, JSON inválido),
     devuelve preferencias por defecto con un aviso en el log.
     """
+    logger.info("─── OLLAMA → [interpret_preferences] modelo=%s — esperando respuesta… ───", _model)
+    logger.debug("  USER PROMPT: %s", query)
     try:
         response = client.chat.completions.create(
             model=_model,
@@ -140,15 +151,17 @@ def interpret_preferences(query: str) -> UserPreferences:
             max_tokens=500,
         )
         raw = response.choices[0].message.content.strip()
+        logger.info("─── OLLAMA ← [interpret_preferences] %d chars ───", len(raw))
+        logger.debug("  RAW RESPONSE: %s", raw[:500])
         parsed = _extract_json(raw)
         prefs = UserPreferences(**parsed)
-        logger.info(f"Preferencias interpretadas: {prefs.model_dump()}")
+        logger.info("  Preferencias extraídas: %s", prefs.model_dump())
         return prefs
 
     except Exception as e:
         logger.warning(
-            f"Error interpretando preferencias con LLM ({_model}): {e}. "
-            "Usando valores por defecto. ¿Está Ollama corriendo?"
+            "─── OLLAMA ✗ [interpret_preferences] modelo=%s error=%s — usando defaults ───",
+            _model, e,
         )
         return UserPreferences()
 
@@ -175,6 +188,36 @@ def _format_day_for_prompt(day: DayItinerary) -> str:
     return "\n".join(lines)
 
 
+def _stream_without_think(raw_stream) -> Generator[str, None, None]:
+    """Elimina el bloque <think>...</think> del inicio de una respuesta en streaming."""
+    buffer = ""
+    think_stripped = False
+    for chunk in raw_stream:
+        content = chunk.choices[0].delta.content or ""
+        if not content:
+            continue
+        if think_stripped:
+            yield content
+            continue
+        buffer += content
+        close_idx = buffer.find("</think>")
+        if close_idx != -1:
+            buffer = buffer[close_idx + len("</think>"):].lstrip("\n")
+            think_stripped = True
+            if buffer:
+                yield buffer
+                buffer = ""
+        elif "<think>" not in buffer and len(buffer) >= 20:
+            think_stripped = True
+            yield buffer
+            buffer = ""
+    # vaciar buffer restante
+    if buffer:
+        clean = re.sub(r"<think>.*?</think>", "", buffer, flags=re.DOTALL).lstrip("\n")
+        if clean:
+            yield clean
+
+
 _GEN_SYSTEM = """Eres un experto guía turístico del País Vasco con un estilo narrativo
 cálido, entusiasta y práctico. Tu tarea es escribir el texto narrativo de un itinerario
 turístico en español castellano.
@@ -190,17 +233,12 @@ INSTRUCCIONES:
 8. Comienza con un título atractivo y un párrafo de bienvenida a Bilbao/Bizkaia."""
 
 
-def generate_narrative(
+def _build_narrative_prompt(
     days: List[DayItinerary],
     preferences: UserPreferences,
-    original_query: Optional[str] = None,
+    original_query: Optional[str],
 ) -> str:
-    """
-    Genera el texto narrativo completo del itinerario usando el LLM local (Ollama).
-    Devuelve el texto en español o un fallback si el LLM falla.
-    """
     itinerary_text = "\n\n".join(_format_day_for_prompt(d) for d in days)
-
     pref_summary = (
         f"Viajero: {preferences.group_type} | "
         f"Días: {preferences.duration_days} | "
@@ -208,16 +246,25 @@ def generate_narrative(
         f"Presupuesto: {preferences.budget_per_day} €/día | "
         f"Ritmo: {preferences.pace}"
     )
-
-    user_prompt = (
+    return (
         f"Perfil del viajero: {pref_summary}\n"
         f"{'Consulta original: ' + original_query if original_query else ''}\n\n"
         f"Itinerario estructurado:\n{itinerary_text}\n\n"
         f"Por favor, genera el texto narrativo del itinerario completo."
     )
 
+
+def generate_narrative_stream(
+    days: List[DayItinerary],
+    preferences: UserPreferences,
+    original_query: Optional[str] = None,
+) -> Generator[str, None, None]:
+    """Genera la narrativa en streaming, yielding tokens según se producen."""
+    user_prompt = _build_narrative_prompt(days, preferences, original_query)
+    logger.info("─── OLLAMA → [narrative_stream] modelo=%s días=%d — iniciando… ───", _model, len(days))
+    logger.debug("  USER PROMPT (%d chars):\n%s", len(user_prompt), user_prompt[:800])
     try:
-        response = client.chat.completions.create(
+        raw = client.chat.completions.create(
             model=_model,
             messages=[
                 {"role": "system", "content": _GEN_SYSTEM},
@@ -225,17 +272,26 @@ def generate_narrative(
             ],
             temperature=_temp_gen,
             max_tokens=_max_tokens,
+            stream=True,
         )
-        narrative = response.choices[0].message.content.strip()
-        logger.info(f"Narrativa generada: {len(narrative)} caracteres.")
-        return narrative
-
+        total = 0
+        for text in _stream_without_think(raw):
+            total += len(text)
+            yield text
+        logger.info("─── OLLAMA ← [narrative_stream] completado: %d chars ───", total)
     except Exception as e:
-        logger.error(
-            f"Error generando narrativa con LLM ({_model}): {e}. "
-            "¿Está Ollama corriendo? Usando fallback básico."
-        )
-        return _fallback_narrative(days, preferences)
+        logger.error("─── OLLAMA ✗ [narrative_stream] modelo=%s error=%s — usando fallback ───", _model, e)
+        yield _fallback_narrative(days, preferences)
+
+
+def generate_narrative(
+    days: List[DayItinerary],
+    preferences: UserPreferences,
+    original_query: Optional[str] = None,
+) -> str:
+    """Genera el texto narrativo completo (versión bloqueante, para uso sin streaming)."""
+    narrative = "".join(generate_narrative_stream(days, preferences, original_query)).strip()
+    return narrative or _fallback_narrative(days, preferences)
 
 
 def _fallback_narrative(days: List[DayItinerary], preferences: UserPreferences) -> str:

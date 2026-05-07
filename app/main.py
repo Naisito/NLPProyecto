@@ -15,6 +15,7 @@ Endpoints principales:
   POST /api/admin/reindex  — re-indexa todos los POIs (admin)
 """
 
+import json as _json
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -22,10 +23,12 @@ from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from app.config import settings
 from app.evaluator import evaluate_route
-from app.generator import assemble_route, generate_narrative, interpret_preferences
+from app.generator import assemble_route, generate_narrative, generate_narrative_stream, interpret_preferences
+from app.route_store import delete_route, get_route, init_db, list_routes, save_route
 from app.infra.embeddings_local import LocalHuggingFaceEmbeddings
 from app.infra.vector_chroma import LocalChromaIndex
 from app.models import (
@@ -102,6 +105,9 @@ async def lifespan(app: FastAPI):
         "ranker":      ranker,
         "planner":     planner,
     })
+
+    # 6. Base de datos de rutas persistente
+    init_db()
 
     elapsed = time.time() - t0
     logger.info(f"Sistema listo en {elapsed:.1f}s.")
@@ -308,12 +314,137 @@ def generate_route(request: RouteRequest):
         ],
     }
 
-    return RouteResponse(
+    exec_secs = round(time.time() - t_start, 2)
+    response  = RouteResponse(
         route=route,
         evaluation=evaluation,
         retrieval_info=retrieval_info,
-        execution_time_seconds=round(time.time() - t_start, 2),
+        execution_time_seconds=exec_secs,
     )
+    save_route(response.model_dump(), request.query or "", exec_secs)
+    return response
+
+
+@app.post("/api/route/stream", tags=["Rutas"])
+def generate_route_stream(request: RouteRequest):
+    """
+    Igual que /api/route pero devuelve Server-Sent Events para progreso en tiempo real.
+    Eventos: status | narrative_chunk | result | error
+    """
+    def _sse(type: str, **kwargs) -> str:
+        return f"data: {_json.dumps({'type': type, **kwargs}, ensure_ascii=False)}\n\n"
+
+    def event_gen():
+        t_start = time.time()
+        try:
+            poi_mgr:   POIManager        = _get("poi_manager")
+            retriever: SemanticRetriever = _get("retriever")
+            ranker:    POIRanker         = _get("ranker")
+            planner:   ItineraryPlanner  = _get("planner")
+
+            yield _sse("status", stage="interpret", message="Interpretando preferencias...")
+            if request.query and not request.preferences:
+                preferences = interpret_preferences(request.query)
+            elif request.preferences:
+                preferences = request.preferences
+                if request.query:
+                    interpreted = interpret_preferences(request.query)
+                    if not preferences.interests and interpreted.interests:
+                        preferences.interests = interpreted.interests
+                    if preferences.extra_notes is None and interpreted.extra_notes:
+                        preferences.extra_notes = interpreted.extra_notes
+            else:
+                preferences = UserPreferences()
+
+            per_day       = planner.pois_per_day.get(preferences.pace, 4)
+            desired_total = preferences.duration_days * per_day
+            margin        = 2
+            default_k     = settings.rag.get("retrieval_k", 20)
+            dynamic_k     = min(poi_mgr.total, max(default_k, int(desired_total * margin), desired_total + 8))
+
+            yield _sse("status", stage="rag", message=f"Recuperando puntos de interés en {preferences.city_scope}...")
+            candidates = retriever.retrieve(preferences=preferences, k=dynamic_k)
+            if not candidates:
+                yield _sse("error", message="No se encontraron POIs relevantes para las preferencias indicadas.")
+                return
+
+            query_for_rerank = request.query or " ".join(preferences.interests) or "turismo Bilbao"
+            default_top_n    = settings.rag.get("rerank_top_n", 12)
+            dynamic_top_n    = min(poi_mgr.total, max(default_top_n, int(desired_total * margin)))
+
+            yield _sse("status", stage="rerank", message=f"Seleccionando los mejores candidatos...")
+            ranked = ranker.rank(candidates=candidates, preferences=preferences, query=query_for_rerank, top_n=dynamic_top_n)
+
+            yield _sse("status", stage="plan", message="Construyendo el itinerario día a día...")
+            from datetime import date
+            today_weekday = date.today().weekday()
+            days = planner.plan(ranked=ranked, preferences=preferences, start_weekday=today_weekday)
+            if not any(d.pois for d in days):
+                yield _sse("error", message="No se pudo construir un itinerario válido. Prueba a cambiar el ámbito o las fechas.")
+                return
+
+            yield _sse("status", stage="narrative", message=f"Generando narrativa ({preferences.duration_days} día(s))...")
+            narrative_chunks: list[str] = []
+            for chunk in generate_narrative_stream(days=days, preferences=preferences, original_query=request.query):
+                narrative_chunks.append(chunk)
+                yield _sse("narrative_chunk", text=chunk)
+            narrative = "".join(narrative_chunks).strip()
+
+            yield _sse("status", stage="evaluate", message="Evaluando la ruta...")
+            route      = assemble_route(days=days, preferences=preferences, narrative=narrative)
+            evaluation = evaluate_route(route=route, preferences=preferences, start_weekday=today_weekday)
+
+            retrieval_info = {
+                "candidates_retrieved":    len(candidates),
+                "candidates_after_rerank": len(ranked),
+                "reranker_used":           ranker.reranker_loaded,
+                "embedding_model":         settings.embeddings["model_name"],
+                "reranker_model":          settings.reranker.get("model_name", "N/A"),
+                "llm_model":               settings.llm.get("ollama_model_name"),
+                "top_candidates": [
+                    {"id": r[0].id, "name": r[0].name, "s_score": round(r[1], 4), "r_score": round(r[2], 4), "final": round(r[3], 4)}
+                    for r in ranked[:5]
+                ],
+            }
+            exec_secs = round(time.time() - t_start, 2)
+            response_obj = RouteResponse(
+                route=route,
+                evaluation=evaluation,
+                retrieval_info=retrieval_info,
+                execution_time_seconds=exec_secs,
+            )
+            route_data = response_obj.model_dump()
+            save_route(route_data, request.query or "", exec_secs)
+            yield _sse("result", data=route_data)
+
+        except Exception as e:
+            logger.exception("Error en generate_route_stream")
+            yield _sse("error", message=str(e))
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@app.get("/api/routes/saved", tags=["Rutas"])
+def list_saved_routes(limit: int = Query(100, ge=1, le=500)):
+    """Lista las rutas guardadas en la base de datos persistente."""
+    return list_routes(limit=limit)
+
+
+@app.get("/api/routes/saved/{route_id}", tags=["Rutas"])
+def get_saved_route(route_id: str):
+    """Devuelve los datos completos de una ruta guardada."""
+    data = get_route(route_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Ruta no encontrada.")
+    return data
+
+
+@app.delete("/api/routes/saved/{route_id}", tags=["Rutas"])
+def delete_saved_route(route_id: str):
+    """Elimina una ruta guardada."""
+    if not delete_route(route_id):
+        raise HTTPException(status_code=404, detail="Ruta no encontrada.")
+    return {"ok": True}
 
 
 @app.get("/api/pois", response_model=POIListResponse, tags=["POIs"])

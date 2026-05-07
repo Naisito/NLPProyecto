@@ -385,10 +385,13 @@ p, li, div, span {
 # ---------------------------------------------------------------------------
 
 if "call_history" not in st.session_state:
-    st.session_state.call_history = []   # lista de dicts con metadatos + respuesta completa
+    st.session_state.call_history = []
 
 if "selected_history_idx" not in st.session_state:
     st.session_state.selected_history_idx = None
+
+if "selected_route_id" not in st.session_state:
+    st.session_state.selected_route_id = None
 
 
 def _add_to_history(query_or_prefs: str, data: dict, exec_time: float):
@@ -820,7 +823,7 @@ def page_generator():
         )
         return
 
-    # ── Llamada a la API ──────────────────────────────────────────────────────
+    # ── Llamada a la API (streaming) ─────────────────────────────────────────
     payload: dict = {}
     if query:
         payload["query"] = query
@@ -829,19 +832,84 @@ def page_generator():
 
     query_label = query or str(preferences_payload)
 
-    with st.spinner("Generando tu ruta… (puede tardar 1-2 min en CPU)"):
-        t0   = time.time()
-        data = _api_post("/api/route", payload)
-        exec_time = round(time.time() - t0, 2)
+    STAGE_LABELS = {
+        "interpret":  "Interpretando preferencias",
+        "rag":        "Recuperando puntos de interés",
+        "rerank":     "Seleccionando candidatos",
+        "plan":       "Construyendo itinerario",
+        "narrative":  "Generando narrativa",
+        "evaluate":   "Evaluando la ruta",
+    }
+    STAGE_ORDER = list(STAGE_LABELS.keys())
 
-    if not data:
+    stage_ph    = st.empty()
+    narrative_ph = st.empty()
+    error_ph    = st.empty()
+
+    narrative_chunks: list[str] = []
+    result_data = None
+    current_stage = None
+    t0 = time.time()
+
+    try:
+        with httpx.stream(
+            "POST",
+            f"{API_BASE}/api/route/stream",
+            json=payload,
+            timeout=API_TIMEOUT_SECONDS,
+        ) as r:
+            for line in r.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    event = json.loads(line[6:])
+                except Exception:
+                    continue
+
+                etype = event.get("type")
+
+                if etype == "status":
+                    current_stage = event.get("stage", "")
+                    idx = STAGE_ORDER.index(current_stage) if current_stage in STAGE_ORDER else 0
+                    steps_html = " &nbsp;›&nbsp; ".join(
+                        f'<span style="color:#4da3ff;font-weight:600">{STAGE_LABELS[s]}</span>'
+                        if s == current_stage
+                        else f'<span style="color:{"#3ddc97" if STAGE_ORDER.index(s) < idx else "#4a5568"}">{STAGE_LABELS[s]}</span>'
+                        for s in STAGE_ORDER
+                    )
+                    stage_ph.markdown(
+                        f'<div style="background:#111827;border:1px solid #24324d;border-radius:12px;padding:.75rem 1rem;font-size:.85rem">'
+                        f'⏳ &nbsp;{steps_html}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                elif etype == "narrative_chunk":
+                    narrative_chunks.append(event["text"])
+
+                elif etype == "result":
+                    result_data = event["data"]
+
+                elif etype == "error":
+                    error_ph.error(event.get("message", "Error desconocido"))
+                    break
+
+    except Exception as e:
+        st.error(f"Error de conexión con la API: {e}")
         return
 
-    # Guardar en historial
-    _add_to_history(query_label, data, exec_time)
+    exec_time = round(time.time() - t0, 2)
+    stage_ph.empty()
+    narrative_ph.empty()
 
-    # Renderizar resultado
-    _render_route(data, exec_time, show_scores=show_scores)
+    if not result_data:
+        return
+
+    # Inyectar narrativa streamed (puede que result lleve la misma, pero garantizamos consistencia)
+    if narrative_chunks:
+        result_data.setdefault("route", {})["narrative"] = "".join(narrative_chunks).strip()
+
+    _add_to_history(query_label, result_data, exec_time)
+    _render_route(result_data, exec_time, show_scores=show_scores)
 
 
 # ---------------------------------------------------------------------------
@@ -905,46 +973,57 @@ def page_explore():
 # ---------------------------------------------------------------------------
 
 def page_history():
-    st.title("Historial de llamadas")
-    st.caption("Rutas generadas en esta sesión")
+    st.title("Historial de rutas")
+    st.caption("Rutas guardadas de forma persistente")
 
-    if not st.session_state.call_history:
-        st.info("Aún no se ha generado ninguna ruta en esta sesión.")
+    # Si hay una ruta seleccionada, mostrarla en detalle
+    selected_id = st.session_state.get("selected_route_id")
+    if selected_id:
+        if st.button("← Volver al historial"):
+            st.session_state.selected_route_id = None
+            st.rerun()
+        data = _api_get(f"/api/routes/saved/{selected_id}")
+        if data:
+            exec_time = data.get("execution_time_seconds", 0)
+            _render_route(data, exec_time)
+        else:
+            st.error("No se pudo cargar la ruta.")
+        return
+
+    routes = _api_get("/api/routes/saved") or []
+
+    if not routes:
+        st.info("Aún no se ha guardado ninguna ruta.")
         return
 
     st.markdown(
-        f"""
-        <div class="section-card">
-            Has generado <strong>{len(st.session_state.call_history)}</strong> rutas en esta sesión.
-            Desde aquí puedes recuperar cualquier propuesta anterior o revisar su respuesta completa.
-        </div>
-        """,
+        f'<div class="section-card">Hay <strong>{len(routes)}</strong> rutas guardadas.</div>',
         unsafe_allow_html=True,
     )
 
-    for i, entry in enumerate(st.session_state.call_history):
+    for entry in routes:
         st.markdown('<div class="history-card">', unsafe_allow_html=True)
+        score_pct = f"{entry['score']:.0%}" if entry.get("score") is not None else "—"
         st.markdown(
             f'<div class="history-title">{entry["title"]}</div>'
-            f'<div class="history-meta">{entry["timestamp"]} | Score: {entry["score"]:.0%} | {entry["exec_time"]:.1f} s</div>',
+            f'<div class="history-meta">{entry["created_at"]} | Score: {score_pct} | {entry["exec_time"]:.1f} s</div>',
             unsafe_allow_html=True,
         )
         st.caption(f"Consulta: {entry['query']}")
 
-        col_ver, col_json = st.columns([1, 1])
+        col_ver, col_del = st.columns([3, 1])
         with col_ver:
-            if st.button("Ver ruta completa", key=f"view_{i}", use_container_width=True):
-                st.session_state.selected_history_idx = i
+            if st.button("Ver ruta completa", key=f"view_{entry['id']}", use_container_width=True):
+                st.session_state.selected_route_id = entry["id"]
                 st.rerun()
-        with col_json:
-            with st.expander("JSON completo"):
-                st.json(entry["data"])
+        with col_del:
+            if st.button("Eliminar", key=f"del_{entry['id']}", use_container_width=True):
+                r = httpx.delete(f"{API_BASE}/api/routes/saved/{entry['id']}", timeout=10)
+                if r.status_code == 200:
+                    st.rerun()
+                else:
+                    st.error("No se pudo eliminar.")
         st.markdown("</div>", unsafe_allow_html=True)
-
-    if st.button("Limpiar historial", use_container_width=True):
-        st.session_state.call_history = []
-        st.session_state.selected_history_idx = None
-        st.rerun()
 
 
 # ---------------------------------------------------------------------------
