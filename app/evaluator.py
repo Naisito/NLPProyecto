@@ -38,12 +38,13 @@ logger = logging.getLogger("turismo_rag")
 
 # Pesos de la puntuación global
 METRIC_WEIGHTS = {
-    "preference_coverage":      0.25,
-    "temporal_coherence":       0.25,
-    "geographic_consistency":   0.20,
-    "budget_adherence":         0.15,
-    "category_diversity":       0.10,
-    "accessibility_compliance": 0.05,
+    "constraint_satisfaction":  0.30,
+    "preference_coverage":      0.20,
+    "temporal_coherence":       0.20,
+    "geographic_consistency":   0.15,
+    "budget_adherence":         0.10,
+    "category_diversity":       0.03,
+    "accessibility_compliance": 0.02,
 }
 
 
@@ -78,6 +79,39 @@ def _preference_coverage(
                 break
 
     return round(covered / len(planned), 4)
+
+
+def _interest_satisfaction(
+    planned: List[PlannedPOI],
+    preferences: UserPreferences,
+) -> float:
+    """
+    Definición operativa:
+        satisfaction = |intereses cubiertos al menos una vez| / |intereses pedidos|
+
+    A diferencia de `preference_coverage`, esta métrica mide si la ruta
+    satisface el conjunto de intereses solicitados, no sólo cuántos POIs
+    encajan con alguno de ellos.
+    """
+    if not preferences.interests:
+        return 1.0
+    if not planned:
+        return 0.0
+
+    covered_interests = 0
+    for interest in preferences.interests:
+        targets = INTEREST_TO_CATEGORIES.get(interest, [interest])
+        matched = False
+        for pp in planned:
+            poi = pp.poi
+            cat_text = f"{poi.category} {poi.subcategory} {' '.join(poi.tags)}".lower()
+            if any(target in cat_text for target in targets):
+                matched = True
+                break
+        if matched:
+            covered_interests += 1
+
+    return round(covered_interests / len(preferences.interests), 4)
 
 
 def _temporal_coherence(
@@ -205,6 +239,127 @@ def _accessibility_compliance(
     return round(accessible / len(planned), 4)
 
 
+def _scope_satisfaction(
+    planned: List[PlannedPOI],
+    preferences: UserPreferences,
+) -> float:
+    """
+    Mide si el municipio de los POIs respeta el ámbito geográfico pedido.
+
+    Nota:
+      - `Bilbao`: todos los POIs deben estar en Bilbao.
+      - `Ambos`: no restringe.
+      - `Bizkaia`: el corpus ya pertenece a Bizkaia, por lo que no penaliza.
+    """
+    if not planned:
+        return 0.0
+
+    scope = preferences.city_scope.strip().lower()
+    if scope in {"ambos", "bizkaia"}:
+        return 1.0
+
+    if scope == "bilbao":
+        in_scope = sum(1 for pp in planned if pp.poi.municipality.strip().lower() == "bilbao")
+        return round(in_scope / len(planned), 4)
+
+    return 1.0
+
+
+def _duration_satisfaction(route: TouristRoute, preferences: UserPreferences) -> float:
+    """1.0 si el número de días generados coincide con el pedido; 0.0 si no."""
+    return 1.0 if len(route.days) == preferences.duration_days else 0.0
+
+
+def _pace_satisfaction(route: TouristRoute, preferences: UserPreferences) -> float:
+    """
+    Compara el número medio de POIs por día con el esperado según el ritmo.
+    Penaliza desviaciones grandes de forma suave.
+    """
+    if not route.days:
+        return 0.0
+
+    expected_per_day = {
+        "tranquilo": 3,
+        "moderado": 4,
+        "intenso": 6,
+    }.get(preferences.pace, 4)
+
+    total_pois = sum(len(day.pois) for day in route.days)
+    avg_per_day = total_pois / max(len(route.days), 1)
+    deviation = abs(avg_per_day - expected_per_day) / max(expected_per_day, 1)
+    return round(max(0.0, 1.0 - deviation), 4)
+
+
+def _time_window_satisfaction(
+    planned: List[PlannedPOI],
+    preferences: UserPreferences,
+) -> float:
+    """
+    Proporción de POIs cuya visita queda dentro de la ventana horaria pedida
+    por el usuario.
+    """
+    if not planned:
+        return 0.0
+
+    pref_start = _time_to_minutes(preferences.start_hour)
+    pref_end = _time_to_minutes(preferences.end_hour)
+
+    compliant = 0
+    for pp in planned:
+        start_min = _time_to_minutes(pp.start_time)
+        end_min = _time_to_minutes(pp.end_time)
+        if start_min >= pref_start and end_min <= pref_end:
+            compliant += 1
+
+    return round(compliant / len(planned), 4)
+
+
+def _meals_satisfaction(
+    planned: List[PlannedPOI],
+    preferences: UserPreferences,
+) -> float:
+    """
+    Si el usuario quiere incluir comidas, comprueba si la ruta contiene al
+    menos una recomendación gastronómica.
+    """
+    if not preferences.include_meals:
+        return 1.0
+    if not planned:
+        return 0.0
+
+    meal_keywords = INTEREST_TO_CATEGORIES.get("gastronomía", []) + INTEREST_TO_CATEGORIES.get("pintxos", [])
+    for pp in planned:
+        poi = pp.poi
+        cat_text = f"{poi.category} {poi.subcategory} {' '.join(poi.tags)}".lower()
+        if any(keyword in cat_text for keyword in meal_keywords):
+            return 1.0
+    return 0.0
+
+
+def _constraint_satisfaction(
+    route: TouristRoute,
+    planned: List[PlannedPOI],
+    preferences: UserPreferences,
+) -> tuple[float, Dict[str, float]]:
+    """
+    Evalúa el cumplimiento agregado de restricciones explícitas del usuario.
+
+    Todas las submétricas se calculan en [0, 1] y la métrica final es la media.
+    """
+    breakdown = {
+        "duration_match": _duration_satisfaction(route, preferences),
+        "scope_match": _scope_satisfaction(planned, preferences),
+        "interest_match": _interest_satisfaction(planned, preferences),
+        "budget_match": _budget_adherence(route.days, preferences),
+        "mobility_match": _accessibility_compliance(planned, preferences),
+        "pace_match": _pace_satisfaction(route, preferences),
+        "time_window_match": _time_window_satisfaction(planned, preferences),
+        "meals_match": _meals_satisfaction(planned, preferences),
+    }
+    overall = sum(breakdown.values()) / len(breakdown)
+    return round(overall, 4), breakdown
+
+
 # ---------------------------------------------------------------------------
 # Evaluador principal
 # ---------------------------------------------------------------------------
@@ -227,6 +382,7 @@ def evaluate_route(
     """
     all_planned: List[PlannedPOI] = [pp for day in route.days for pp in day.pois]
 
+    m_constraints, constraint_breakdown = _constraint_satisfaction(route, all_planned, preferences)
     m_pref   = _preference_coverage(all_planned, preferences)
     m_temp   = _temporal_coherence(all_planned, start_weekday)
     m_geo    = _geographic_consistency(route.days)
@@ -235,7 +391,8 @@ def evaluate_route(
     m_access = _accessibility_compliance(all_planned, preferences)
 
     overall = (
-        METRIC_WEIGHTS["preference_coverage"]      * m_pref
+        METRIC_WEIGHTS["constraint_satisfaction"]  * m_constraints
+        + METRIC_WEIGHTS["preference_coverage"]      * m_pref
         + METRIC_WEIGHTS["temporal_coherence"]     * m_temp
         + METRIC_WEIGHTS["geographic_consistency"] * m_geo
         + METRIC_WEIGHTS["budget_adherence"]       * m_budget
@@ -252,10 +409,12 @@ def evaluate_route(
         "avg_daily_cost_eur":     round(route.total_cost_eur / max(len(route.days), 1), 2),
         "budget_per_day_eur":     preferences.budget_per_day,
         "poi_categories":         [pp.poi.category for pp in all_planned],
+        "constraint_breakdown":   constraint_breakdown,
         "metric_weights":         METRIC_WEIGHTS,
     }
 
     metrics = EvaluationMetrics(
+        constraint_satisfaction=m_constraints,
         preference_coverage=m_pref,
         temporal_coherence=m_temp,
         geographic_consistency=m_geo,
@@ -267,7 +426,7 @@ def evaluate_route(
     )
 
     logger.info(
-        f"Evaluación completada: pref={m_pref:.2f} temp={m_temp:.2f} "
+        f"Evaluación completada: constraints={m_constraints:.2f} pref={m_pref:.2f} temp={m_temp:.2f} "
         f"geo={m_geo:.2f} budget={m_budget:.2f} div={m_div:.2f} "
         f"overall={overall:.2f}"
     )

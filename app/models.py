@@ -134,6 +134,9 @@ class TouristRoute(BaseModel):
 # ---------------------------------------------------------------------------
 
 class EvaluationMetrics(BaseModel):
+    constraint_satisfaction: float = Field(
+        description="Grado de cumplimiento de las restricciones explícitas del usuario [0–1]"
+    )
     preference_coverage: float = Field(
         description="Proporción de POIs que cubren al menos un interés del usuario [0–1]"
     )

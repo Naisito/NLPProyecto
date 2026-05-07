@@ -35,6 +35,7 @@ logger = logging.getLogger("turismo_rag")
 
 _base_url = settings.llm.get("ollama_base_url", "http://localhost:11434")
 _model    = settings.llm.get("ollama_model_name", "llama3.2")
+_timeout  = float(settings.llm.get("request_timeout_seconds", 1800))
 _temp_gen    = float(settings.llm.get("temperature_generation", 0.5))
 _temp_interp = float(settings.llm.get("temperature_interpretation", 0.1))
 _max_tokens  = int(settings.llm.get("max_tokens_generation", 2000))
@@ -42,6 +43,7 @@ _max_tokens  = int(settings.llm.get("max_tokens_generation", 2000))
 client = OpenAI(
     base_url=f"{_base_url}/v1",
     api_key="ollama",          # Ollama no requiere clave; valor ignorado
+    timeout=_timeout,
 )
 
 

@@ -10,7 +10,7 @@
     "cache_dir": "models_cache"
   },
   "reranker": {
-  "model_name": "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
+  "model_name": "BAAI/bge-reranker-v2-m3",
   "cache_dir": "models_cache",
   "enabled": true
   },
@@ -39,7 +39,8 @@
   },
   "llm": {
     "ollama_base_url": "http://localhost:11434",
-    "ollama_model_name": "llama3.2",
+    "ollama_model_name": "qwen3:8b",
+    "request_timeout_seconds": 1800,
     "temperature_generation": 0.5,
     "temperature_interpretation": 0.1,
     "max_tokens_generation": 800

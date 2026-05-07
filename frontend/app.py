@@ -57,9 +57,9 @@ def _resolve_api_base() -> str:
 API_BASE = _resolve_api_base()
 
 try:
-    API_TIMEOUT_SECONDS = int(os.environ.get("API_TIMEOUT_SECONDS", "900"))
+    API_TIMEOUT_SECONDS = int(os.environ.get("API_TIMEOUT_SECONDS", "1800"))
 except Exception:
-    API_TIMEOUT_SECONDS = 900
+    API_TIMEOUT_SECONDS = 1800
 
 st.set_page_config(
     page_title="Rutas Bilbao / Bizkaia",
@@ -71,13 +71,202 @@ st.set_page_config(
 # CSS personalizado
 st.markdown("""
 <style>
+:root {
+    --bg: #0b0f19;
+    --panel: #111827;
+    --panel-2: #172033;
+    --panel-3: #1d2940;
+    --border: #24324d;
+    --text: #ecf3ff;
+    --muted: #9fb0c9;
+    --accent: #4da3ff;
+    --accent-2: #7cc4ff;
+    --success: #3ddc97;
+    --warn: #ffb84d;
+    --danger: #ff6b6b;
+}
+html, body, [class*="css"]  {
+    color: var(--text);
+}
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(180deg, #0a0f18 0%, #0d1320 100%);
+}
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #101722 0%, #0d1420 100%);
+    border-right: 1px solid var(--border);
+}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+    color: var(--muted);
+}
+[data-testid="stSidebar"] [data-testid="stHeading"] {
+    color: var(--text);
+}
+[data-testid="stSidebar"] [data-baseweb="radio"] label,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .st-b7,
+[data-testid="stSidebar"] .st-b8 {
+    color: var(--text) !important;
+}
+h1, h2, h3 {
+    color: var(--text);
+    letter-spacing: -0.02em;
+}
+p, li, div, span {
+    color: inherit;
+}
+.stButton > button {
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    border: none;
+    color: white;
+    font-weight: 600;
+}
+.stButton > button[kind="secondary"] {
+    background: var(--panel-2);
+    color: var(--text);
+}
+[data-testid="stExpander"] {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--panel);
+}
+[data-testid="stExpander"] details summary p {
+    color: var(--text);
+}
+[data-baseweb="select"] > div,
+.stTextInput input,
+.stTextArea textarea,
+.stNumberInput input,
+.stSelectbox [data-baseweb="select"] > div,
+.stMultiSelect [data-baseweb="select"] > div {
+    background: var(--panel) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+}
+.stSlider [data-baseweb="slider"] * {
+    color: var(--text) !important;
+}
+.stAlert {
+    background: var(--panel-2) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+}
+[data-baseweb="tag"] {
+    background: #1f3b63 !important;
+    color: #eaf4ff !important;
+    border: 1px solid #31527d !important;
+}
+.route-hero,
 .metric-card {
-    background: linear-gradient(135deg, #1e3a5f, #2d6a9f);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+}
+.route-hero {
+    background: linear-gradient(135deg, #142033 0%, #1f3353 100%);
+    color: white;
+    padding: 1.4rem 1.6rem;
+    border-radius: 18px;
+    margin-bottom: 1rem;
+    border: 1px solid #243754;
+}
+.route-hero-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+}
+.route-hero-subtitle {
+    font-size: 0.96rem;
+    opacity: 0.9;
+    line-height: 1.5;
+}
+.summary-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-top: 0.9rem;
+}
+.summary-chip {
+    background: rgba(77, 163, 255, 0.12);
+    border: 1px solid rgba(124, 196, 255, 0.18);
+    padding: 0.38rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.88rem;
+    color: #eef6ff;
+}
+.empty-state {
+    background: linear-gradient(135deg, #121b2b 0%, #172233 100%);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 2rem 2.2rem;
+    margin-top: 0.5rem;
+}
+.empty-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.4rem;
+}
+.empty-subtitle {
+    font-size: 1rem;
+    color: var(--muted);
+    max-width: 760px;
+    line-height: 1.6;
+    margin-bottom: 1.2rem;
+}
+.pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-bottom: 1.4rem;
+}
+.pill {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: #dce9ff;
+    border-radius: 999px;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.92rem;
+    font-weight: 500;
+}
+.empty-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.9rem;
+}
+.empty-card {
+    background: rgba(17, 24, 39, 0.88);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1rem;
+}
+.empty-card-title {
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent-2);
+    margin-bottom: 0.35rem;
+}
+.empty-card-body {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.4;
+}
+.metric-card {
+    background: linear-gradient(135deg, #142033, #1d3353);
     padding: 1rem 1.5rem;
     border-radius: 12px;
     color: white;
     text-align: center;
     margin: 0.3rem 0;
+    border: 1px solid #27415f;
 }
 .metric-value { font-size: 2rem; font-weight: 700; }
 .metric-label { font-size: 0.85rem; opacity: 0.85; }
@@ -88,8 +277,105 @@ st.markdown("""
     font-size: 0.75rem;
     font-weight: 600;
 }
-.manana { background: #fff3cd; color: #856404; }
-.tarde  { background: #cce5ff; color: #004085; }
+.manana { background: #1a2a3f; color: #dce9ff; border: 1px solid #29405f; }
+.tarde  { background: #162235; color: #dce9ff; border: 1px solid #29405f; }
+.poi-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1rem 1.1rem;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+    margin-bottom: 0.9rem;
+}
+.poi-time {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 0.9rem 0.75rem;
+    text-align: center;
+    color: var(--text);
+    font-weight: 700;
+}
+.poi-title {
+    font-size: 1.08rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.35rem;
+}
+.poi-meta {
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.5;
+    margin-bottom: 0.45rem;
+}
+.poi-description {
+    color: #d2def1;
+    line-height: 1.6;
+    margin-bottom: 0.45rem;
+}
+.mini-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.45rem;
+}
+.mini-chip {
+    background: #17253b;
+    border: 1px solid #29405f;
+    color: #d6e6ff;
+    border-radius: 999px;
+    padding: 0.28rem 0.65rem;
+    font-size: 0.8rem;
+}
+.section-card {
+    background: linear-gradient(135deg, #111927 0%, #162235 100%);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 1.2rem 1.3rem;
+    margin-bottom: 1rem;
+    color: var(--muted);
+}
+.poi-browser-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1rem 1.1rem;
+    margin-bottom: 0.9rem;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+.poi-browser-title {
+    color: var(--text);
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 0.3rem;
+}
+.poi-browser-desc {
+    color: var(--muted);
+    line-height: 1.6;
+    margin-bottom: 0.5rem;
+}
+.history-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1rem 1.1rem;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+    margin-bottom: 0.9rem;
+}
+.history-title {
+    color: var(--text);
+    font-weight: 700;
+    font-size: 1.02rem;
+    margin-bottom: 0.25rem;
+}
+.history-meta {
+    color: var(--muted);
+    font-size: 0.92rem;
+    margin-bottom: 0.65rem;
+}
+.stCaption, [data-testid="stCaptionContainer"] {
+    color: var(--muted) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -155,21 +441,32 @@ def _render_poi_card(pp: dict, show_scores: bool = False):
     try:
         poi = pp["poi"]
         slot = pp.get("slot", "mañana")
-        badge_cls = "manana" if "ma" in slot else "tarde"
 
         with st.container():
+            st.markdown('<div class="poi-card">', unsafe_allow_html=True)
             col_time, col_body = st.columns([1, 5])
             with col_time:
-                st.markdown(f"**{pp.get('start_time','—')}**\n\n↓\n\n**{pp.get('end_time','—')}**")
                 st.markdown(
-                    f'<span style="background:#17a2b8;color:white;padding:2px 8px;'
-                    f'border-radius:10px;font-size:0.8rem;">{poi["category"]}</span> '
-                    f'Ubicación: {poi["municipality"]} &nbsp;|&nbsp; '
-                    f'Duración: {poi["visit_duration_minutes"]} min &nbsp;|&nbsp; '
-                    f'Precio: {poi["price"]} ({poi["price_numeric"]:.0f} €)',
+                    f'<div class="poi-time">{pp.get("start_time","—")}<br><span style="opacity:.5">↓</span><br>{pp.get("end_time","—")}</div>',
                     unsafe_allow_html=True,
                 )
-                st.markdown(f'*{poi["description"][:220]}…*')
+            with col_body:
+                st.markdown(
+                    f'<div class="poi-title">{poi["name"]}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div class="poi-meta">Ubicación: {poi["municipality"]} | Duración: {poi["visit_duration_minutes"]} min | Precio: {poi["price"]} ({poi["price_numeric"]:.0f} €)</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div class="poi-description">{poi["description"][:220]}…</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div class="mini-chip-row"><span class="mini-chip">{poi["category"]}</span><span class="mini-chip">{slot.title()}</span></div>',
+                    unsafe_allow_html=True,
+                )
                 if poi.get("address"):
                     st.caption(f"Dirección: {poi['address']}")
                 if show_scores:
@@ -179,7 +476,36 @@ def _render_poi_card(pp: dict, show_scores: bool = False):
                     st.caption(f"Semantic: {s:.2f}  |  Rerank: {r:.2f}  |  Score final: {f_:.2f}")
                 if pp.get("travel_minutes_from_previous", 0) > 0:
                     st.caption(f"{pp['travel_minutes_from_previous']} min desde el anterior")
-            st.divider()
+            st.markdown("</div>", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"Error renderizando POI: {e}")
+
+
+def _render_browser_poi_card(poi: dict, score: float | None = None):
+    try:
+        st.markdown('<div class="poi-browser-card">', unsafe_allow_html=True)
+        col_main, col_side = st.columns([5, 1])
+        with col_main:
+            st.markdown(
+                f'<div class="poi-browser-title">{poi["name"]} — {poi["category"]} — {poi["municipality"]}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<div class="poi-browser-desc">{poi["description"][:180]}…</div>',
+                unsafe_allow_html=True,
+            )
+            chip_row = (
+                f'<div class="mini-chip-row">'
+                f'<span class="mini-chip">Precio: {poi["price"]}</span>'
+                f'<span class="mini-chip">Duración: {poi["visit_duration_minutes"]} min</span>'
+                f'<span class="mini-chip">{"Accesible" if poi["accessibility"] else "No accesible"}</span>'
+                f'</div>'
+            )
+            st.markdown(chip_row, unsafe_allow_html=True)
+        with col_side:
+            if score is not None:
+                st.metric("Score", f"{score:.2f}")
+        st.markdown("</div>", unsafe_allow_html=True)
     except Exception as e:
         st.warning(f"Error renderizando POI: {e}")
 
@@ -196,6 +522,7 @@ def _render_evaluation(eval_data: dict):
         )
 
         metrics = [
+            ("Cumplimiento de la petición", eval_data["constraint_satisfaction"], "Grado en que la ruta respeta lo pedido"),
             ("Cobertura de intereses",  eval_data["preference_coverage"],    "POIs que encajan con tus intereses"),
             ("Coherencia temporal",     eval_data["temporal_coherence"],     "POIs abiertos en su franja horaria"),
             ("Consistencia geográfica", eval_data["geographic_consistency"], "Compacidad geográfica diaria"),
@@ -224,6 +551,9 @@ def _render_evaluation(eval_data: dict):
             d_cols[3].metric("Coste medio/día",    f"{det.get('avg_daily_cost_eur', 0):.0f} €")
             if det.get("poi_categories"):
                 st.write("**Categorías en la ruta:**", ", ".join(det["poi_categories"]))
+            if det.get("constraint_breakdown"):
+                st.write("**Desglose de cumplimiento:**")
+                st.json(det["constraint_breakdown"])
     except Exception as e:
         st.warning(f"Error renderizando evaluación: {e}")
 
@@ -308,7 +638,23 @@ def _render_route(data: dict, exec_time: float, show_scores: bool = False):
 
     # ── Cabecera ─────────────────────────────────────────────────────────────
     st.success(f"Ruta generada en {exec_time:.1f} s")
-    st.title(route.get("title", "Ruta turística"))
+    st.markdown(
+        f"""
+        <div class="route-hero">
+            <div class="route-hero-title">{route.get("title", "Ruta turística")}</div>
+            <div class="route-hero-subtitle">
+                Un itinerario organizado para recorrer Bilbao y Bizkaia con equilibrio entre tiempo, distancia y preferencias.
+            </div>
+            <div class="summary-strip">
+                <div class="summary-chip">{len(route.get("days", []))} días</div>
+                <div class="summary-chip">{route.get("total_pois", "—")} paradas</div>
+                <div class="summary-chip">{route.get('total_cost_eur', 0):.0f} € estimados</div>
+                <div class="summary-chip">Score {evaluation.get('overall_score', 0):.0%}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Días planificados",    len(route.get("days", [])))
@@ -439,26 +785,39 @@ def page_generator():
         return
 
     if not generate_btn:
-        st.markdown("""
-        ## Bienvenido al Generador de Rutas Turísticas
-
-        Este sistema usa **RAG híbrido** para crear itinerarios personalizados
-        para Bilbao y Bizkaia.
-
-        ### Pipeline técnico:
-        | Paso | Componente | Tecnología |
-        |------|-----------|------------|
-        | 1 | Interpretación de preferencias | Ollama (local) |
-        | 2 | Recuperación semántica | BAAI/bge-m3 + ChromaDB |
-        | 3 | Reranking de candidatos | cross-encoder/ms-marco-multilingual |
-        | 4 | Planificación del itinerario | Algoritmo greedy NN + slots horarios |
-        | 5 | Generación narrativa | Ollama (local) |
-        | 6 | Evaluación automática | Métricas objetivas |
-
-        ### Cómo empezar:
-        - **Consulta libre**: escribe en lenguaje natural tu viaje ideal.
-        - **Formulario**: ajusta los parámetros con precisión.
-        """)
+        st.markdown(
+            """
+            <div class="empty-state">
+                <div class="empty-title">Diseña tu próxima ruta por Bilbao y Bizkaia</div>
+                <div class="empty-subtitle">
+                    Elige una consulta libre para describir tu viaje ideal o usa el formulario
+                    para afinar ritmo, presupuesto e intereses con más precisión.
+                </div>
+                <div class="pill-row">
+                    <div class="pill">Museos</div>
+                    <div class="pill">Pintxos</div>
+                    <div class="pill">Naturaleza</div>
+                    <div class="pill">Familia</div>
+                    <div class="pill">Pueblos costeros</div>
+                </div>
+                <div class="empty-grid">
+                    <div class="empty-card">
+                        <div class="empty-card-title">Consulta libre</div>
+                        <div class="empty-card-body">Describe el viaje con tus palabras y genera una propuesta rápida.</div>
+                    </div>
+                    <div class="empty-card">
+                        <div class="empty-card-title">Formulario</div>
+                        <div class="empty-card-body">Ajusta días, presupuesto, movilidad e intereses de forma precisa.</div>
+                    </div>
+                    <div class="empty-card">
+                        <div class="empty-card-title">Resultado</div>
+                        <div class="empty-card-body">Obtén un itinerario ordenado, mapa diario y evaluación automática.</div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         return
 
     # ── Llamada a la API ──────────────────────────────────────────────────────
@@ -492,6 +851,15 @@ def page_generator():
 def page_explore():
     st.title("Explorar Puntos de Interés")
     st.caption("Busca y filtra el corpus completo de Bilbao y Bizkaia")
+    st.markdown(
+        """
+        <div class="section-card">
+            Recorre la colección completa, encuentra ideas por categoría o lanza una búsqueda semántica
+            para descubrir lugares afines a un estilo de viaje concreto.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     col_search, col_filters = st.columns([3, 2])
     with col_search:
@@ -518,18 +886,7 @@ def page_explore():
             for item in result.get("results", []):
                 poi   = item["poi"]
                 score = item["score"]
-                with st.container():
-                    c1, c2 = st.columns([5, 1])
-                    with c1:
-                        st.markdown(f"**{poi['name']}** — *{poi['category']}* — {poi['municipality']}")
-                        st.markdown(f"{poi['description'][:180]}…")
-                        st.caption(
-                            f"Precio: {poi['price']} | Duración: {poi['visit_duration_minutes']} min "
-                            f"| {'accesible' if poi['accessibility'] else 'no accesible'}"
-                        )
-                    with c2:
-                        st.metric("Score", f"{score:.2f}")
-                    st.divider()
+                _render_browser_poi_card(poi, score=score)
     else:
         params = {}
         if cat_filter != "Todos":
@@ -540,14 +897,7 @@ def page_explore():
         if result:
             st.info(f"**{result['total']}** POIs en la colección.")
             for poi in result.get("pois", []):
-                with st.container():
-                    st.markdown(f"**{poi['name']}** — *{poi['category']}* — {poi['municipality']}")
-                    st.markdown(f"{poi['description'][:160]}…")
-                    st.caption(
-                        f"Precio: {poi['price']} | Duración: {poi['visit_duration_minutes']} min "
-                        f"| {'accesible' if poi['accessibility'] else 'no accesible'}"
-                    )
-                    st.divider()
+                _render_browser_poi_card(poi)
 
 
 # ---------------------------------------------------------------------------
@@ -562,27 +912,36 @@ def page_history():
         st.info("Aún no se ha generado ninguna ruta en esta sesión.")
         return
 
-    st.markdown(f"**{len(st.session_state.call_history)}** rutas generadas en esta sesión.")
+    st.markdown(
+        f"""
+        <div class="section-card">
+            Has generado <strong>{len(st.session_state.call_history)}</strong> rutas en esta sesión.
+            Desde aquí puedes recuperar cualquier propuesta anterior o revisar su respuesta completa.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     for i, entry in enumerate(st.session_state.call_history):
-        score_color = "green" if entry["score"] >= 0.7 else "orange" if entry["score"] >= 0.4 else "red"
-        with st.expander(
-            f"[{entry['timestamp']}] {entry['title']}  —  "
-            f"Score: {entry['score']:.0%}  |  {entry['exec_time']:.1f} s",
-            expanded=(i == 0),
-        ):
-            st.caption(f"**Consulta:** {entry['query']}")
+        st.markdown('<div class="history-card">', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="history-title">{entry["title"]}</div>'
+            f'<div class="history-meta">{entry["timestamp"]} | Score: {entry["score"]:.0%} | {entry["exec_time"]:.1f} s</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(f"Consulta: {entry['query']}")
 
-            col_ver, col_json = st.columns([1, 1])
-            with col_ver:
-                if st.button("Ver ruta completa", key=f"view_{i}"):
-                    st.session_state.selected_history_idx = i
-                    st.rerun()
-            with col_json:
-                with st.expander("JSON completo"):
-                    st.json(entry["data"])
+        col_ver, col_json = st.columns([1, 1])
+        with col_ver:
+            if st.button("Ver ruta completa", key=f"view_{i}", use_container_width=True):
+                st.session_state.selected_history_idx = i
+                st.rerun()
+        with col_json:
+            with st.expander("JSON completo"):
+                st.json(entry["data"])
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    if st.button("Limpiar historial"):
+    if st.button("Limpiar historial", use_container_width=True):
         st.session_state.call_history = []
         st.session_state.selected_history_idx = None
         st.rerun()
@@ -594,18 +953,24 @@ def page_history():
 
 def page_how_it_works():
     st.title("Cómo funciona el sistema")
-    st.markdown("""
-    El sistema combina recuperación de información, reranking y planificación
-    para generar itinerarios personalizados. La interfaz pública muestra
-    resultados y métricas agregadas; los detalles internos y nombres de
-    modelos no se exponen.
-
-    - Entrada: preferencias libres o formulario estructurado.
-    - Recuperación: búsqueda semántica sobre el corpus de POIs.
-    - Reranking: priorización de candidatos por relevancia y diversidad.
-    - Planificación: asignación temporal y geográfica de POIs.
-    - Salida: itinerario detallado + evaluación objetiva.
-    """)
+    st.markdown(
+        """
+        <div class="section-card">
+            El sistema transforma una petición de viaje en un itinerario utilizable combinando
+            búsqueda semántica, priorización de candidatos y planificación temporal.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """
+        - Entrada: preferencias libres o formulario estructurado.
+        - Recuperación: búsqueda semántica sobre el corpus de POIs.
+        - Reranking: priorización de candidatos por relevancia y diversidad.
+        - Planificación: asignación temporal y geográfica de POIs.
+        - Salida: itinerario detallado con evaluación automática.
+        """
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -626,7 +991,7 @@ def main():
         health = _api_get("/api/health")
         if health:
             status_text = "API conectada" if health.get("status") == "ok" else "API disponible (problemas)"
-            st.caption(f"{status_text}  \\n  {health.get('index_size',0)} POIs indexados")
+            st.caption(f"{status_text}\n{health.get('index_size',0)} POIs indexados")
             # Mostrar estado simple del reranker (activo/inactivo)
             if "reranker_loaded" in health:
                 rer_status = "Activo" if health.get("reranker_loaded") else "Inactivo"
