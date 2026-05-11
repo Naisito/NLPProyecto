@@ -54,46 +54,48 @@ client = OpenAI(
 def _extract_json(text: str) -> dict:
     """
     Extrae el primer objeto JSON válido de un texto que puede contener
-    texto introductorio, bloques markdown (```json ... ```) u otras cadenas.
-    Los modelos locales son más propensos a incluir texto extra alrededor.
+    bloques <think>...</think>, markdown o texto introductorio.
+    Busca primero fuera del bloque think; si no hay nada, busca dentro.
     """
-    # 0) Eliminar bloques <think>...</think> (qwen3 y otros modelos con thinking mode)
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    outside = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    # Buscar en `outside` primero; si queda vacío o sin JSON, buscar en `text` completo
+    candidates = [outside, text] if outside else [text]
 
-    # 1) Intentar parsear directamente
-    try:
-        return json.loads(text.strip())
-    except json.JSONDecodeError:
-        pass
-
-    # 2) Buscar bloque ```json ... ``` o ``` ... ```
-    md_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if md_match:
+    for candidate in candidates:
+        # 1) Parseo directo
         try:
-            return json.loads(md_match.group(1))
+            return json.loads(candidate.strip())
         except json.JSONDecodeError:
             pass
 
-    # 3) Buscar todos los candidatos JSON con llaves balanceadas
-    pos = 0
-    while True:
-        start = text.find("{", pos)
-        if start == -1:
-            break
-        depth = 0
-        end = start
-        for i, ch in enumerate(text[start:], start):
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    end = i
-                    break
-        try:
-            return json.loads(text[start : end + 1])
-        except json.JSONDecodeError:
-            pos = start + 1
+        # 2) Bloque ```json ... ``` o ``` ... ```
+        md_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", candidate, re.DOTALL)
+        if md_match:
+            try:
+                return json.loads(md_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # 3) Buscar todos los candidatos JSON con llaves balanceadas
+        pos = 0
+        while True:
+            start = candidate.find("{", pos)
+            if start == -1:
+                break
+            depth = 0
+            end = start
+            for i, ch in enumerate(candidate[start:], start):
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i
+                        break
+            try:
+                return json.loads(candidate[start : end + 1])
+            except json.JSONDecodeError:
+                pos = start + 1
 
     raise ValueError(f"No se encontró JSON válido en la respuesta: {text[:200]}")
 
