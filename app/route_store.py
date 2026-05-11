@@ -1,8 +1,3 @@
-"""
-Persistencia de rutas generadas en SQLite.
-Base de datos en /app/db/routes.db (volumen Docker → survives rebuilds).
-"""
-
 import json
 import logging
 import sqlite3

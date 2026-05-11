@@ -1,9 +1,3 @@
-"""
-Tests unitarios para app/evaluator.py.
-
-Un test por métrica, con fixtures construidas a mano (sin LLM, sin retriever).
-"""
-
 import pytest
 from app.evaluator import (
     _preference_coverage,

@@ -9,14 +9,7 @@ logger = logging.getLogger("turismo_rag")
 
 
 class LocalChromaIndex(VectorIndex):
-    """
-    Índice vectorial persistente basado en ChromaDB.
-
-    Almacena embeddings de POIs junto con metadatos (poi_id, category,
-    municipality) y permite búsquedas semánticas filtradas.
-    Los scores se normalizan mediante min-max para obtener valores en [0, 1]
-    donde 1 representa la mayor similitud.
-    """
+    """Índice vectorial persistente con ChromaDB + normalización min-max de scores."""
 
     def __init__(self, db_path: str = None, collection_name: str = "pois_turisticos"):
         if not db_path:

@@ -9,15 +9,7 @@ logger = logging.getLogger("turismo_rag")
 
 
 class LocalHuggingFaceEmbeddings(EmbeddingClient):
-    """
-    Cliente de embeddings basado en BAAI/bge-m3 (multilingüe, 1024 dim).
-
-    Modelo elegido por su excelente rendimiento en recuperación semántica
-    multilingüe, incluyendo español, evaluado en BEIR y MTEB benchmarks.
-    Referencia: Chen et al. (2024) «BGE M3-Embedding: Multi-Lingual,
-    Multi-Functionality, Multi-Granularity Text Embeddings Through
-    Self-Knowledge Distillation». arXiv:2402.03216.
-    """
+    """Embeddings locales con BAAI/bge-m3 via SentenceTransformers."""
 
     def __init__(self, model_name: str = "BAAI/bge-m3", cache_dir: str = None):
         if not cache_dir:
@@ -39,11 +31,6 @@ class LocalHuggingFaceEmbeddings(EmbeddingClient):
             raise
 
     def encode(self, texts: List[str]) -> List[List[float]]:
-        """Genera embeddings normalizados L2 (cosine-ready)."""
         embeddings = self.model.encode(
-            texts,
-            batch_size=16,
-            show_progress_bar=False,
-            normalize_embeddings=True,
-        )
+            texts, batch_size=16, show_progress_bar=False, normalize_embeddings=True)
         return embeddings.tolist()

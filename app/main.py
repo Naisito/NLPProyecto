@@ -1,20 +1,3 @@
-"""
-API REST del Generador de Rutas Turísticas — Bilbao / Bizkaia.
-
-Pipeline completo (automatizado):
-  Solicitud → Interpretación → Recuperación RAG → Reranking →
-  Planificación → Generación narrativa → Evaluación → Respuesta
-
-Endpoints principales:
-  POST /api/route          — genera una ruta turística completa
-  GET  /api/pois           — lista todos los POIs con filtros opcionales
-  GET  /api/pois/{id}      — detalle de un POI
-  POST /api/pois/search    — búsqueda semántica libre
-  GET  /api/health         — estado del sistema
-  GET  /api/stats          — estadísticas de la colección
-  POST /api/admin/reindex  — re-indexa todos los POIs (admin)
-"""
-
 import json as _json
 import logging
 import time
@@ -28,6 +11,8 @@ from fastapi.responses import StreamingResponse
 from app.config import settings
 from app.evaluator import evaluate_route
 from app.generator import assemble_route, generate_narrative, generate_narrative_stream, interpret_preferences
+from app.hybrid_retriever import HybridRetriever
+from app.infra.bm25_index import BM25Index
 from app.route_store import delete_route, get_route, init_db, list_routes, save_route
 from app.infra.embeddings_local import LocalHuggingFaceEmbeddings
 from app.infra.vector_chroma import LocalChromaIndex
@@ -47,28 +32,20 @@ from app.poi_manager import POIManager
 from app.ranker import POIRanker
 from app.retriever import SemanticRetriever
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=settings.server.get("log_level", "INFO"),
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
 )
 logger = logging.getLogger("turismo_rag")
 
-# ---------------------------------------------------------------------------
-# Estado global de la aplicación
-# ---------------------------------------------------------------------------
 _state: dict = {}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Inicialización y cierre de recursos al arrancar/parar la API."""
     logger.info("Iniciando sistema RAG turístico…")
     t0 = time.time()
 
-    # 1. Infraestructura vectorial
     embedder = LocalHuggingFaceEmbeddings(
         model_name=settings.embeddings["model_name"],
         cache_dir=settings.embeddings["cache_dir"],
@@ -78,12 +55,10 @@ async def lifespan(app: FastAPI):
         collection_name=settings.vector_db["collection_name"],
     )
 
-    # 2. Gestor de POIs (carga + indexación)
     poi_manager = POIManager(embedder=embedder, vector_store=vector_store)
     n = poi_manager.load_pois()
     logger.info(f"{n} POIs cargados y listos.")
 
-    # 3. Retriever semántico
     retriever = SemanticRetriever(
         embedder=embedder,
         vector_store=vector_store,
@@ -91,42 +66,118 @@ async def lifespan(app: FastAPI):
         retrieval_k=settings.rag.get("retrieval_k", 20),
     )
 
-    # 4. Ranker (cross-encoder + scoring compuesto)
-    ranker = POIRanker()
+    bm25_index = BM25Index()
+    bm25_path = "db/bm25.pkl"
+    bm25_poi_id_by_idx: dict = {}
+    retrieval_mode = settings.retrieval.get("mode", "dense")
 
-    # 5. Planificador
+    if retrieval_mode in ("bm25", "hybrid"):
+        if bm25_index.load(bm25_path):
+            logger.info("BM25 index reutilizado desde disco.")
+        else:
+            all_pois = poi_manager.get_all()
+            texts, mapping = HybridRetriever.build_bm25_mapping(all_pois)
+            bm25_index.build(texts)
+            bm25_index.persist(bm25_path)
+            logger.info("BM25 index construido y persistido.")
+        all_pois = poi_manager.get_all()
+        bm25_poi_id_by_idx = {i: p.id for i, p in enumerate(all_pois)}
+
+    hybrid_retriever = None
+    if retrieval_mode == "hybrid":
+        hybrid_retriever = HybridRetriever(
+            dense_retriever=retriever,
+            bm25_index=bm25_index,
+            poi_id_by_bm25_idx=bm25_poi_id_by_idx,
+            id_to_poi=poi_manager.get_by_id,
+        )
+        logger.info("HybridRetriever inicializado (dense + BM25).")
+
+    if retrieval_mode == "bm25":
+        from app.retriever import SCOPE_FILTER as _scope
+        _poi_list = poi_manager.get_all()
+        _poi_map = {p.id: p for p in _poi_list}
+        _bm25_idx_map = {i: p.id for i, p in enumerate(_poi_list)}
+
+        class _BM25OnlyRetriever:
+            def __init__(self, bm25, idx_map, poi_map, dense_retriever):
+                self.bm25 = bm25
+                self._idx_map = idx_map
+                self._poi_map = poi_map
+                self._dense = dense_retriever
+
+            def retrieve(self, preferences, k=20):
+                from app.retriever import _build_query as _bq
+                query = _bq(preferences)
+                results = self.bm25.search(query, k=k * 2)
+                candidates = []
+                allowed = _scope.get(preferences.city_scope)
+                allowed_set = set(m.lower() for m in allowed) if allowed else None
+                for doc_idx, score in results:
+                    poi_id = self._idx_map.get(doc_idx)
+                    if poi_id is None:
+                        continue
+                    poi = self._poi_map.get(poi_id)
+                    if poi is None:
+                        continue
+                    if allowed_set and poi.municipality.lower() not in allowed_set:
+                        continue
+                    if preferences.mobility == "reducida" and not poi.accessibility:
+                        continue
+                    daily_budget = preferences.budget_per_day
+                    if poi.price_numeric > daily_budget * 0.8 and poi.price_numeric > 0:
+                        score *= 0.7
+                    if daily_budget < 30 and poi.price_numeric == 0.0:
+                        score *= 1.1
+                    candidates.append((poi, score))
+                    if len(candidates) >= k:
+                        break
+                return candidates
+
+            def search_by_text(self, query, k=10):
+                results = self.bm25.search(query, k=k)
+                out = []
+                for doc_idx, score in results:
+                    poi_id = self._idx_map.get(doc_idx)
+                    if poi_id:
+                        poi = self._poi_map.get(poi_id)
+                        if poi:
+                            out.append((poi, score))
+                return out
+
+        bm25_only = _BM25OnlyRetriever(bm25_index, _bm25_idx_map, _poi_map, retriever)
+        active_retriever = bm25_only
+    elif retrieval_mode == "hybrid":
+        active_retriever = hybrid_retriever
+    else:
+        active_retriever = retriever
+
+    ranker = POIRanker()
     planner = ItineraryPlanner()
 
     _state.update({
-        "embedder":    embedder,
-        "vector_store": vector_store,
-        "poi_manager": poi_manager,
-        "retriever":   retriever,
-        "ranker":      ranker,
-        "planner":     planner,
+        "embedder":         embedder,
+        "vector_store":     vector_store,
+        "poi_manager":      poi_manager,
+        "retriever":        retriever,
+        "bm25_index":       bm25_index,
+        "hybrid_retriever": hybrid_retriever,
+        "active_retriever": active_retriever,
+        "ranker":           ranker,
+        "planner":          planner,
     })
 
-    # 6. Base de datos de rutas persistente
     init_db()
 
     elapsed = time.time() - t0
     logger.info(f"Sistema listo en {elapsed:.1f}s.")
     yield
-
     logger.info("Apagando sistema RAG turístico.")
 
 
-# ---------------------------------------------------------------------------
-# Aplicación FastAPI
-# ---------------------------------------------------------------------------
 app = FastAPI(
     title="Generador de Rutas Turísticas — Bilbao / Bizkaia",
-    description=(
-        "Sistema RAG híbrido para la generación personalizada de rutas turísticas "
-        "en Bilbao y Bizkaia. Pipeline: interpretación LLM → recuperación semántica "
-        "(BAAI/bge-m3) → reranking (cross-encoder multilingual) → planificación "
-        "geográfica → generación narrativa (Ollama local) → evaluación automática."
-    ),
+    description="Sistema RAG híbrido: interpretación LLM → recuperación (dense + BM25) → reranking → planificación → narrativa → evaluación.",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -139,22 +190,17 @@ app.add_middleware(
 )
 
 
-# ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
 def _get(key: str):
     if key not in _state:
         raise HTTPException(status_code=503, detail="Sistema no inicializado.")
     return _state[key]
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
+# ----- Endpoints -------------------------------------------------------------
+
 
 @app.get("/api/health", response_model=HealthResponse, tags=["Sistema"])
 def health():
-    """Comprueba el estado del sistema y los modelos cargados."""
     poi_mgr: POIManager = _state.get("poi_manager")
     ranker:  POIRanker  = _state.get("ranker")
     return HealthResponse(
@@ -167,7 +213,6 @@ def health():
 
 @app.get("/api/stats", tags=["Sistema"])
 def stats():
-    """Estadísticas de la colección de POIs."""
     poi_mgr: POIManager = _get("poi_manager")
     return {
         "total_pois":     poi_mgr.total,
@@ -180,62 +225,39 @@ def stats():
 
 @app.post("/api/route", response_model=RouteResponse, tags=["Rutas"])
 def generate_route(request: RouteRequest):
-    """
-    Genera una ruta turística personalizada.
-
-    Acepta:
-    - `query`: texto libre (ej. «3 días en Bilbao con mis hijos, amantes de la naturaleza»)
-    - `preferences`: objeto estructurado con las preferencias del usuario
-
-    Si se proporcionan ambos, el sistema fusiona la query con las preferencias
-    explícitas. Si sólo se indica query, el LLM la interpreta automáticamente.
-    """
     t_start = time.time()
 
     poi_mgr:  POIManager       = _get("poi_manager")
-    retriever: SemanticRetriever = _get("retriever")
+    retriever = _get("active_retriever")
     ranker:   POIRanker        = _get("ranker")
     planner:  ItineraryPlanner = _get("planner")
 
-    # ---- 1. Interpretar preferencias ----------------------------------
     if request.query and not request.preferences:
         preferences = interpret_preferences(request.query)
     elif request.preferences:
         preferences = request.preferences
         if request.query:
-            # Fusionar: las preferencias explícitas tienen prioridad
             interpreted = interpret_preferences(request.query)
-            # Completar sólo los campos que no vienen explícitos
             if not preferences.interests and interpreted.interests:
                 preferences.interests = interpreted.interests
             if preferences.extra_notes is None and interpreted.extra_notes:
                 preferences.extra_notes = interpreted.extra_notes
     else:
-        # Sin input: valores por defecto
         preferences = UserPreferences()
 
     logger.info(
         f"Generando ruta: scope={preferences.city_scope} "
         f"days={preferences.duration_days} "
-        f"interests={preferences.interests} "
-        f"pace={preferences.pace}"
+        f"interests={preferences.interests} pace={preferences.pace}"
     )
 
-    # ---- 2. Recuperación semántica (RAG) ------------------------------
-    # Ajuste dinámico: calcular cuántos candidatos necesitamos en función
-    # del número de días solicitados y el ritmo (pois por día).
     per_day = planner.pois_per_day.get(preferences.pace, 4)
     desired_total = preferences.duration_days * per_day
-    # Margen para compensar filtros y descartes posteriores
     margin = 2
     default_k = settings.rag.get("retrieval_k", 20)
     dynamic_k = min(poi_mgr.total, max(default_k, int(desired_total * margin), desired_total + 8))
-    logger.info(f"Recuperando candidatos semánticos: desired={desired_total} margin={margin} k={dynamic_k}")
 
-    candidates = retriever.retrieve(
-        preferences=preferences,
-        k=dynamic_k,
-    )
+    candidates = retriever.retrieve(preferences=preferences, k=dynamic_k)
 
     if not candidates:
         raise HTTPException(
@@ -243,15 +265,10 @@ def generate_route(request: RouteRequest):
             detail="No se encontraron POIs relevantes para las preferencias indicadas.",
         )
 
-    # Construir query enriquecida para el cross-encoder
     query_for_rerank = request.query or " ".join(preferences.interests) or "turismo Bilbao"
 
-    # ---- 3. Reranking -------------------------------------------------
-    # Rerank: ajustar top_n también proporcionalmente para no recortar
-    # los candidatos necesarios para todos los días.
     default_top_n = settings.rag.get("rerank_top_n", 12)
     dynamic_top_n = min(poi_mgr.total, max(default_top_n, int(desired_total * margin)))
-    logger.info(f"Reranking: top_n={dynamic_top_n}")
 
     ranked = ranker.rank(
         candidates=candidates,
@@ -260,41 +277,21 @@ def generate_route(request: RouteRequest):
         top_n=dynamic_top_n,
     )
 
-    # ---- 4. Planificación del itinerario ------------------------------
     from datetime import date
-    today_weekday = date.today().weekday()   # 0=lunes
+    today_weekday = date.today().weekday()
 
-    days = planner.plan(
-        ranked=ranked,
-        preferences=preferences,
-        start_weekday=today_weekday,
-    )
+    days = planner.plan(ranked=ranked, preferences=preferences, start_weekday=today_weekday)
 
     if not any(d.pois for d in days):
         raise HTTPException(
             status_code=422,
-            detail="El planificador no pudo construir un itinerario válido. "
-                   "Prueba a cambiar el ámbito geográfico o las fechas.",
+            detail="El planificador no pudo construir un itinerario válido. Prueba a cambiar el ámbito o las fechas.",
         )
 
-    # ---- 5. Generación narrativa ---------------------------------------
-    narrative = generate_narrative(
-        days=days,
-        preferences=preferences,
-        original_query=request.query,
-    )
-
-    # ---- 6. Ensamblado de la ruta ------------------------------------
+    narrative = generate_narrative(days=days, preferences=preferences, original_query=request.query)
     route = assemble_route(days=days, preferences=preferences, narrative=narrative)
+    evaluation = evaluate_route(route=route, preferences=preferences, start_weekday=today_weekday)
 
-    # ---- 7. Evaluación automática -------------------------------------
-    evaluation = evaluate_route(
-        route=route,
-        preferences=preferences,
-        start_weekday=today_weekday,
-    )
-
-    # ---- 8. Info de trazabilidad ------------------------------------
     retrieval_info = {
         "candidates_retrieved":   len(candidates),
         "candidates_after_rerank": len(ranked),
@@ -304,18 +301,15 @@ def generate_route(request: RouteRequest):
         "llm_model":              settings.llm.get("ollama_model_name"),
         "top_candidates": [
             {
-                "id":    r[0].id,
-                "name":  r[0].name,
-                "s_score":  round(r[1], 4),
-                "r_score":  round(r[2], 4),
-                "final":    round(r[3], 4),
+                "id": r[0].id, "name": r[0].name,
+                "s_score": round(r[1], 4), "r_score": round(r[2], 4), "final": round(r[3], 4),
             }
             for r in ranked[:5]
         ],
     }
 
     exec_secs = round(time.time() - t_start, 2)
-    response  = RouteResponse(
+    response = RouteResponse(
         route=route,
         evaluation=evaluation,
         retrieval_info=retrieval_info,
@@ -327,10 +321,6 @@ def generate_route(request: RouteRequest):
 
 @app.post("/api/route/stream", tags=["Rutas"])
 def generate_route_stream(request: RouteRequest):
-    """
-    Igual que /api/route pero devuelve Server-Sent Events para progreso en tiempo real.
-    Eventos: status | narrative_chunk | result | error
-    """
     def _sse(type: str, **kwargs) -> str:
         return f"data: {_json.dumps({'type': type, **kwargs}, ensure_ascii=False)}\n\n"
 
@@ -338,7 +328,7 @@ def generate_route_stream(request: RouteRequest):
         t_start = time.time()
         try:
             poi_mgr:   POIManager        = _get("poi_manager")
-            retriever: SemanticRetriever = _get("retriever")
+            retriever = _get("active_retriever")
             ranker:    POIRanker         = _get("ranker")
             planner:   ItineraryPlanner  = _get("planner")
 
@@ -362,25 +352,25 @@ def generate_route_stream(request: RouteRequest):
             default_k     = settings.rag.get("retrieval_k", 20)
             dynamic_k     = min(poi_mgr.total, max(default_k, int(desired_total * margin), desired_total + 8))
 
-            yield _sse("status", stage="rag", message=f"Recuperando puntos de interés en {preferences.city_scope}...")
+            yield _sse("status", stage="rag", message=f"Recuperando POIs en {preferences.city_scope}...")
             candidates = retriever.retrieve(preferences=preferences, k=dynamic_k)
             if not candidates:
-                yield _sse("error", message="No se encontraron POIs relevantes para las preferencias indicadas.")
+                yield _sse("error", message="No se encontraron POIs relevantes.")
                 return
 
             query_for_rerank = request.query or " ".join(preferences.interests) or "turismo Bilbao"
             default_top_n    = settings.rag.get("rerank_top_n", 12)
             dynamic_top_n    = min(poi_mgr.total, max(default_top_n, int(desired_total * margin)))
 
-            yield _sse("status", stage="rerank", message=f"Seleccionando los mejores candidatos...")
+            yield _sse("status", stage="rerank", message="Reordenando candidatos...")
             ranked = ranker.rank(candidates=candidates, preferences=preferences, query=query_for_rerank, top_n=dynamic_top_n)
 
-            yield _sse("status", stage="plan", message="Construyendo el itinerario día a día...")
+            yield _sse("status", stage="plan", message="Construyendo itinerario...")
             from datetime import date
             today_weekday = date.today().weekday()
             days = planner.plan(ranked=ranked, preferences=preferences, start_weekday=today_weekday)
             if not any(d.pois for d in days):
-                yield _sse("error", message="No se pudo construir un itinerario válido. Prueba a cambiar el ámbito o las fechas.")
+                yield _sse("error", message="No se pudo construir un itinerario válido.")
                 return
 
             yield _sse("status", stage="narrative", message=f"Generando narrativa ({preferences.duration_days} día(s))...")
@@ -390,7 +380,7 @@ def generate_route_stream(request: RouteRequest):
                 yield _sse("narrative_chunk", text=chunk)
             narrative = "".join(narrative_chunks).strip()
 
-            yield _sse("status", stage="evaluate", message="Evaluando la ruta...")
+            yield _sse("status", stage="evaluate", message="Evaluando ruta...")
             route      = assemble_route(days=days, preferences=preferences, narrative=narrative)
             evaluation = evaluate_route(route=route, preferences=preferences, start_weekday=today_weekday)
 
@@ -426,13 +416,11 @@ def generate_route_stream(request: RouteRequest):
 
 @app.get("/api/routes/saved", tags=["Rutas"])
 def list_saved_routes(limit: int = Query(100, ge=1, le=500)):
-    """Lista las rutas guardadas en la base de datos persistente."""
     return list_routes(limit=limit)
 
 
 @app.get("/api/routes/saved/{route_id}", tags=["Rutas"])
 def get_saved_route(route_id: str):
-    """Devuelve los datos completos de una ruta guardada."""
     data = get_route(route_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Ruta no encontrada.")
@@ -441,7 +429,6 @@ def get_saved_route(route_id: str):
 
 @app.delete("/api/routes/saved/{route_id}", tags=["Rutas"])
 def delete_saved_route(route_id: str):
-    """Elimina una ruta guardada."""
     if not delete_route(route_id):
         raise HTTPException(status_code=404, detail="Ruta no encontrada.")
     return {"ok": True}
@@ -449,10 +436,9 @@ def delete_saved_route(route_id: str):
 
 @app.get("/api/pois", response_model=POIListResponse, tags=["POIs"])
 def list_pois(
-    category: Optional[str] = Query(None, description="Filtrar por categoría"),
-    municipality: Optional[str] = Query(None, description="Filtrar por municipio"),
+    category: Optional[str] = Query(None),
+    municipality: Optional[str] = Query(None),
 ):
-    """Lista todos los POIs, con filtros opcionales."""
     poi_mgr: POIManager = _get("poi_manager")
     pois = poi_mgr.get_all()
 
@@ -466,7 +452,6 @@ def list_pois(
 
 @app.get("/api/pois/{poi_id}", response_model=POI, tags=["POIs"])
 def get_poi(poi_id: str):
-    """Obtiene el detalle de un POI por su ID."""
     poi_mgr: POIManager = _get("poi_manager")
     poi = poi_mgr.get_by_id(poi_id)
     if not poi:
@@ -476,8 +461,7 @@ def get_poi(poi_id: str):
 
 @app.post("/api/pois/search", tags=["POIs"])
 def search_pois(request: POISearchRequest):
-    """Búsqueda semántica libre sobre la colección de POIs."""
-    retriever: SemanticRetriever = _get("retriever")
+    retriever = _get("active_retriever")
     results = retriever.search_by_text(query=request.query, k=request.k)
 
     filtered = []
@@ -493,7 +477,6 @@ def search_pois(request: POISearchRequest):
 
 @app.post("/api/admin/reindex", tags=["Admin"])
 def reindex():
-    """Vacía y re-indexa todos los POIs en ChromaDB. Útil tras actualizar el JSON."""
     poi_mgr: POIManager = _get("poi_manager")
     poi_mgr.reindex()
     return {"status": "ok", "indexed": poi_mgr.total}

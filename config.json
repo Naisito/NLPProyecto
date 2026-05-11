@@ -53,5 +53,11 @@
     "rerank": 0.35,
     "preference_match": 0.25,
     "spatial_diversity": 0.10
+  },
+  "retrieval": {
+    "mode": "hybrid",
+    "fusion": "rrf",
+    "rrf_k": 60,
+    "linear_alpha": 0.5
   }
 }

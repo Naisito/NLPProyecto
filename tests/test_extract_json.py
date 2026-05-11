@@ -1,9 +1,3 @@
-"""
-Tests unitarios para _extract_json (app/generator.py).
-
-Cubre 5 casos: JSON limpio, con <think>, con markdown, con texto extra, malformado.
-"""
-
 import pytest
 from app.generator import _extract_json
 

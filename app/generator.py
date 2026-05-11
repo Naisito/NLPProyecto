@@ -1,16 +1,3 @@
-"""
-Módulo de Generación de Itinerarios en Español.
-
-Responsabilidades:
-  1. Interpretar la consulta libre del usuario en preferencias estructuradas
-     mediante una llamada LLM (función interpret_preferences).
-  2. Generar el texto narrativo final del itinerario turístico en español
-     a partir del itinerario estructurado (función generate_narrative).
-
-Modelo: Ollama (local) — inferencia 100% local, sin dependencia de APIs externas.
-Por defecto usa llama3.2, configurable en config.json → llm.ollama_model_name.
-"""
-
 import json
 import logging
 import re

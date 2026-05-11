@@ -1,25 +1,3 @@
-"""
-Script de evaluación cuantitativa del retriever.
-
-Uso:
-    python -m evaluation.eval_retrieval --gold evaluation/gold_set.json --mode dense
-    python -m evaluation.eval_retrieval --gold evaluation/gold_set.json --mode dense --with-reranker
-    python -m evaluation.eval_retrieval --gold evaluation/gold_set.json --mode bm25
-    python -m evaluation.eval_retrieval --gold evaluation/gold_set.json --mode hybrid --alpha 0.5
-    python -m evaluation.eval_retrieval --gold evaluation/gold_set.json --mode dense --output results/dense.json
-
-Modos:
-    dense          Retrieval semántico puro (BAAI/bge-m3 + ChromaDB).
-    bm25           Solo BM25 sparse (requiere Tarea 2 implementada).
-    hybrid         RRF sobre dense + BM25 (requiere Tarea 2 implementada).
-
-Flags:
-    --with-reranker  Aplica POIRanker.rank() sobre los candidatos del retriever.
-    --alpha FLOAT    Solo para mode=hybrid con fusión linear (default: RRF).
-    --output PATH    Guarda métricas detalladas en JSON.
-    --k INT          Top-k a recuperar por el retriever (default: 20).
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -47,7 +25,6 @@ logger = logging.getLogger("eval_retrieval")
 # ---------------------------------------------------------------------------
 
 def load_gold_set(path: str) -> List[Dict[str, Any]]:
-    """Carga y valida el gold set. Lanza ValueError si el schema es inválido."""
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
@@ -69,7 +46,6 @@ def load_gold_set(path: str) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def _build_retriever(k: int):
-    """Construye el SemanticRetriever con los mismos componentes que main.py."""
     from app.config import settings
     from app.infra.embeddings_local import LocalHuggingFaceEmbeddings
     from app.infra.vector_chroma import LocalChromaIndex
@@ -120,17 +96,25 @@ def retrieve_dense_reranked(query: str, k: int, retriever, reranker) -> List[str
     return [poi.id for poi, _, _, _ in ranked]
 
 
-def retrieve_bm25(query: str, k: int, bm25_index) -> List[str]:
+def retrieve_bm25(query: str, k: int, bm25_index, poi_manager) -> List[str]:
     """Retrieval solo BM25 sparse."""
     results = bm25_index.search(query, k=k)
-    return [poi_id for poi_id, _ in results]
+    poi_ids = []
+    all_pois = poi_manager.get_all()
+    for doc_idx, score in results:
+        if doc_idx < len(all_pois):
+            poi_ids.append(all_pois[doc_idx].id)
+    return poi_ids
 
 
-def retrieve_hybrid(query: str, k: int, hybrid_retriever) -> List[str]:
+def retrieve_hybrid(
+    query: str,
+    k: int,
+    hybrid_retriever,
+    poi_manager,
+) -> List[str]:
     """Retrieval híbrido (dense + BM25 con RRF o linear)."""
-    from app.models import UserPreferences
-    prefs = UserPreferences()
-    results = hybrid_retriever.retrieve(prefs, k=k)
+    results = hybrid_retriever.retrieve_raw(query, k=k)
     return [poi.id for poi, _ in results]
 
 
@@ -186,19 +170,24 @@ def evaluate(
 
 
 def _aggregate_metrics(per_query: List[Dict]) -> Dict[str, float]:
-    """Media aritmética de cada métrica sobre todas las queries."""
+    """Media aritmética de cada métrica sobre todas las queries, incluyendo latencia."""
     if not per_query:
         return {}
 
     metric_keys = list(per_query[0]["metrics"].keys())
     agg = {k: 0.0 for k in metric_keys}
+    latencies = []
     n = len(per_query)
 
     for pq in per_query:
         for k, v in pq["metrics"].items():
             agg[k] += v
+        latencies.append(pq.get("latency_ms", 0))
 
-    return {k: round(v / n, 4) for k, v in agg.items()}
+    result = {k: round(v / n, 4) for k, v in agg.items()}
+    if latencies:
+        result["latency_median_ms"] = round(sorted(latencies)[len(latencies) // 2], 1)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -220,10 +209,11 @@ def print_markdown_table(results: Dict[str, Any], mode_label: str) -> None:
     mrr_val  = agg.get("mrr", 0)
     ndcg_val = agg.get("ndcg@10", 0)
     map_val  = agg.get("ap", 0)
+    lat_val  = agg.get("latency_median_ms", 0)
     print(f"\n### Resumen compacto\n")
-    print(f"| Configuración | Recall@5 | Recall@10 | MRR    | NDCG@10 | MAP    |")
-    print(f"|---------------|----------|-----------|--------|---------|--------|")
-    print(f"| {mode_label:<13} | {r5:.4f}   | {r10:.4f}    | {mrr_val:.4f} | {ndcg_val:.4f}  | {map_val:.4f} |")
+    print(f"| Configuración | Recall@5 | Recall@10 | MRR    | NDCG@10 | MAP    | Latencia (ms) |")
+    print(f"|---------------|----------|-----------|--------|---------|--------|---------------|")
+    print(f"| {mode_label:<13} | {r5:.4f}   | {r10:.4f}    | {mrr_val:.4f} | {ndcg_val:.4f}  | {map_val:.4f} | {lat_val:.1f} |")
 
 
 # ---------------------------------------------------------------------------
@@ -269,32 +259,63 @@ def main() -> None:
     print(f"[eval_retrieval] {len(queries)} queries cargadas.")
 
     if args.mode == "bm25":
-        raise NotImplementedError(
-            "Modo 'bm25' no implementado. Requiere BM25Index de la Tarea 2."
+        # Modo BM25: construir índice desde POIs
+        print("[eval_retrieval] Construyendo índice BM25...")
+        retriever, poi_manager = _build_retriever(args.k)
+        from app.infra.bm25_index import BM25Index
+        bm25_index = BM25Index()
+        all_pois = poi_manager.get_all()
+        texts = [p.enriched_text for p in all_pois]
+        bm25_index.build(texts)
+
+        mode_label = "BM25"
+        retrieve_fn = lambda q, k: retrieve_bm25(q, k, bm25_index, poi_manager)
+
+    elif args.mode == "hybrid":
+        # Modo híbrido: dense + BM25 con RRF/linear
+        print("[eval_retrieval] Construyendo retriever híbrido...")
+        retriever, poi_manager = _build_retriever(args.k)
+        from app.infra.bm25_index import BM25Index
+        from app.hybrid_retriever import HybridRetriever
+
+        bm25_index = BM25Index()
+        all_pois = poi_manager.get_all()
+        texts, idx_map = HybridRetriever.build_bm25_mapping(all_pois)
+        bm25_index.build(texts)
+
+        hybrid = HybridRetriever(
+            dense_retriever=retriever,
+            bm25_index=bm25_index,
+            poi_id_by_bm25_idx=idx_map,
+            id_to_poi=poi_manager.get_by_id,
         )
 
-    if args.mode == "hybrid":
-        raise NotImplementedError(
-            "Modo 'hybrid' no implementado. Requiere HybridRetriever de la Tarea 2."
-        )
+        fusion = hybrid.fusion
+        mode_label = f"Hybrid ({fusion})"
+        if args.alpha is not None and fusion == "linear":
+            hybrid.linear_alpha = args.alpha
+            mode_label += f" alpha={args.alpha}"
 
-    # ---- Modo dense ----
-    print("[eval_retrieval] Inicializando componentes RAG (puede tardar)...")
-    retriever, poi_manager = _build_retriever(args.k)
+        retrieve_fn = lambda q, k: retrieve_hybrid(q, k, hybrid, poi_manager)
 
-    reranker = None
-    if args.with_reranker:
-        print("[eval_retrieval] Cargando cross-encoder reranker...")
-        reranker = _build_reranker()
-
-    mode_label = "Dense (bge-m3)"
-    if args.with_reranker:
-        mode_label += " + Reranker"
-
-    if reranker is not None:
-        retrieve_fn = lambda q, k: retrieve_dense_reranked(q, k, retriever, reranker)
     else:
-        retrieve_fn = lambda q, k: retrieve_dense(q, k, retriever)
+        # ---- Modo dense ----
+        print("[eval_retrieval] Inicializando componentes RAG (puede tardar)...")
+        retriever, poi_manager = _build_retriever(args.k)
+
+        reranker = None
+        if args.with_reranker:
+            print("[eval_retrieval] Cargando cross-encoder reranker...")
+            reranker = _build_reranker()
+
+        mode_label = "Dense (bge-m3)"
+        if args.with_reranker:
+            mode_label += " + Reranker"
+
+        if reranker is not None:
+            retrieve_fn = lambda q, k: retrieve_dense_reranked(q, k, retriever, reranker)
+        else:
+            retrieve_fn = lambda q, k: retrieve_dense(q, k, retriever)
 
     print(f"[eval_retrieval] Evaluando {len(queries)} queries en modo '{mode_label}'...")
     results = evaluate(queries, retrieve_fn, k=args.k)

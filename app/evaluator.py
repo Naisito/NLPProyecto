@@ -1,20 +1,3 @@
-"""
-Módulo de Evaluación Automática de Rutas Turísticas.
-
-Implementa las métricas definidas en el Hito 1, con definición operativa
-precisa para cada una:
-
-  1. preference_coverage   — cobertura de intereses
-  2. temporal_coherence    — coherencia temporal (POIs abiertos en su slot)
-  3. geographic_consistency — compacidad geográfica diaria
-  4. budget_adherence       — cumplimiento del presupuesto
-  5. category_diversity     — diversidad de categorías
-  6. accessibility_compliance — accesibilidad cuando se requiere
-
-Cada métrica devuelve un valor en [0, 1] (1 = perfecto).
-La puntuación global es una media ponderada.
-"""
-
 import math
 import logging
 from typing import List, Dict, Any

@@ -1,12 +1,3 @@
-"""
-POI Manager: carga, indexa y consulta los puntos de interés.
-
-Flujo:
-1. Carga el corpus completo desde un único JSON local.
-2. Reindexa automáticamente ChromaDB si cambia el contenido del corpus.
-3. Expone consultas por ID, categoría y municipio.
-"""
-
 import hashlib
 import json
 import logging
@@ -54,11 +45,6 @@ def _parse_poi(raw: dict) -> POI:
 
 
 class POIManager:
-    """
-    Gestiona la colección de POIs: carga, indexación y consulta.
-
-    El índice vectorial almacena el `enriched_text` de cada POI.
-    """
 
     def __init__(self, embedder: EmbeddingClient, vector_store: VectorIndex):
         self.embedder = embedder
@@ -101,10 +87,6 @@ class POIManager:
             return True
         return False
 
-    # ------------------------------------------------------------------
-    # Carga desde JSON
-    # ------------------------------------------------------------------
-
     def load_pois(self, json_path: str = None) -> int:
         """Carga los POIs desde un único JSON local y reindexa si hace falta."""
         self._pois = {}
@@ -143,10 +125,6 @@ class POIManager:
 
         self._loaded = True
         return len(self._pois)
-
-    # ------------------------------------------------------------------
-    # Indexación
-    # ------------------------------------------------------------------
 
     def _index_all(self):
         """Genera embeddings del enriched_text de cada POI y los almacena."""
@@ -188,10 +166,6 @@ class POIManager:
         self.vector_store.clear()
         self._index_all()
         self._write_saved_signature()
-
-    # ------------------------------------------------------------------
-    # Consultas
-    # ------------------------------------------------------------------
 
     def get_by_id(self, poi_id: str) -> Optional[POI]:
         return self._pois.get(poi_id)

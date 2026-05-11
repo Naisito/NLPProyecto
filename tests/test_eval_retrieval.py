@@ -1,16 +1,3 @@
-"""
-Tests unitarios para evaluation/metrics.py y la carga del gold set.
-
-Cubre:
-  - recall_at_k: todos relevantes, ninguno, mitad
-  - precision_at_k: casos básicos
-  - mrr: primer relevante en pos 1, 3 y no presente
-  - ndcg_at_k: relevancia graduada (highly vs relevant)
-  - average_precision (AP): varios patrones
-  - load_gold_set: schema válido e inválido
-  - compute_all: integración de todas las métricas
-"""
-
 import json
 import math
 import os

@@ -1,12 +1,3 @@
-"""
-Tests unitarios para app/planner.py.
-
-Cubre:
-  - _is_open_at: 4 casos del bug F0.1
-  - plan(): 2 casos del fix F0.3 (start_hour / end_hour del usuario)
-  - _greedy_nearest_neighbor: 1 caso básico de ordenación
-"""
-
 import pytest
 from unittest.mock import MagicMock
 
@@ -160,3 +151,60 @@ class TestGreedyNN:
         # El siguiente vecino más cercano a p_south es p_mid
         assert ordered[1].id == "mid"
         assert ordered[2].id == "north"
+
+
+# ---------------------------------------------------------------------------
+# Tests TSP 2-opt
+# ---------------------------------------------------------------------------
+
+class TestTwoOpt:
+    def test_two_opt_improves_or_equals_greedy(self):
+        from app.planner import _two_opt, haversine_km
+
+        # Cuatro POIs: una ruta donde greedy puede ser subóptima
+        p1 = _make_poi("p1", lat=43.26, lon=-2.93)
+        p2 = _make_poi("p2", lat=43.27, lon=-2.92)
+        p3 = _make_poi("p3", lat=43.25, lon=-2.92)
+        p4 = _make_poi("p4", lat=43.26, lon=-2.91)
+
+        greedy = _greedy_nearest_neighbor([p1, p2, p3, p4])
+        optimized = _two_opt(greedy)
+
+        def _route_dist(route):
+            d = 0.0
+            for i in range(len(route) - 1):
+                d += haversine_km(
+                    route[i].coordinates.lat, route[i].coordinates.lon,
+                    route[i+1].coordinates.lat, route[i+1].coordinates.lon,
+                )
+            return d
+
+        greedy_dist = _route_dist(greedy)
+        optimized_dist = _route_dist(optimized)
+
+        # 2-opt nunca debe empeorar la ruta
+        assert optimized_dist <= greedy_dist + 1e-6
+
+    def test_two_opt_preserves_all_pois(self):
+        from app.planner import _two_opt
+        pois = [
+            _make_poi(f"p{i}", lat=43.25 + i * 0.005, lon=-2.93 + i * 0.003)
+            for i in range(5)
+        ]
+        greedy = _greedy_nearest_neighbor(pois)
+        optimized = _two_opt(greedy)
+        assert set(p.id for p in optimized) == set(p.id for p in pois)
+
+    def test_two_opt_two_or_fewer_pois(self):
+        from app.planner import _two_opt
+        p1 = _make_poi("p1")
+        p2 = _make_poi("p2", lat=43.27, lon=-2.93)
+
+        result = _two_opt([p1, p2])
+        assert len(result) == 2
+
+        result = _two_opt([p1])
+        assert len(result) == 1
+
+        result = _two_opt([])
+        assert result == []

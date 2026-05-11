@@ -1,14 +1,3 @@
-"""
-Métricas estándar de Information Retrieval implementadas desde cero.
-
-Todas las funciones reciben listas de IDs ordenadas por score descendente.
-No dependen de sklearn ni de ninguna librería de ranking externa.
-
-Referencias:
-  - Manning et al. (2008) "Introduction to Information Retrieval", cap. 8.
-  - Järvelin & Kekäläinen (2002) "Cumulated gain-based evaluation of IR techniques", TOIS.
-"""
-
 import math
 from typing import List, Set
 
@@ -18,11 +7,7 @@ def _relevant_set(relevant_ids: List[str]) -> Set[str]:
 
 
 def recall_at_k(retrieved_ids: List[str], relevant_ids: List[str], k: int) -> float:
-    """Proporción de relevantes recuperados entre los top-k resultados.
-
-    Recall@k = |retrieved[:k] ∩ relevant| / |relevant|
-    Devuelve 0.0 si relevant está vacío.
-    """
+    """Recall@k = |retrieved[:k] ∩ relevant| / |relevant|."""
     if not relevant_ids:
         return 0.0
     top_k = set(retrieved_ids[:k])
@@ -31,10 +16,7 @@ def recall_at_k(retrieved_ids: List[str], relevant_ids: List[str], k: int) -> fl
 
 
 def precision_at_k(retrieved_ids: List[str], relevant_ids: List[str], k: int) -> float:
-    """Proporción de relevantes entre los top-k resultados.
-
-    Precision@k = |retrieved[:k] ∩ relevant| / k
-    """
+    """Precision@k = |retrieved[:k] ∩ relevant| / k."""
     if k == 0:
         return 0.0
     top_k = retrieved_ids[:k]
@@ -44,10 +26,7 @@ def precision_at_k(retrieved_ids: List[str], relevant_ids: List[str], k: int) ->
 
 
 def mrr(retrieved_ids: List[str], relevant_ids: List[str]) -> float:
-    """Mean Reciprocal Rank para una sola query.
-
-    MRR = 1 / rank_of_first_relevant  (0.0 si no hay ningún relevante en la lista)
-    """
+    """MRR = 1 / rank del primer relevante. 0.0 si no hay ninguno."""
     rel = _relevant_set(relevant_ids)
     for rank, poi_id in enumerate(retrieved_ids, start=1):
         if poi_id in rel:
@@ -61,15 +40,7 @@ def ndcg_at_k(
     highly_relevant_ids: List[str],
     k: int,
 ) -> float:
-    """Normalized Discounted Cumulative Gain con relevancia graduada.
-
-    Grados de relevancia:
-      highly_relevant → 2
-      relevant (pero no highly) → 1
-      no relevante → 0
-
-    Devuelve 0.0 si el IDCG es 0 (no hay relevantes para la query).
-    """
+    """NDCG@k con relevancia graduada: highly=2, relevant=1, no=0."""
     highly = set(highly_relevant_ids)
     rel = _relevant_set(relevant_ids) - highly  # solo los relevantes que no son highly
 
@@ -97,11 +68,7 @@ def ndcg_at_k(
 
 
 def average_precision(retrieved_ids: List[str], relevant_ids: List[str]) -> float:
-    """Average Precision para una sola query.
-
-    AP = (1 / |relevant|) * sum_k [ Precision@k * rel(k) ]
-    donde rel(k) = 1 si el k-ésimo resultado es relevante, 0 si no.
-    """
+    """AP = (1/|relevant|) * sum_k Precision@k * rel(k)."""
     if not relevant_ids:
         return 0.0
     rel = _relevant_set(relevant_ids)
@@ -120,21 +87,10 @@ def compute_all(
     highly_relevant_ids: List[str],
     ks: List[int] = None,
 ) -> dict:
-    """Calcula todas las métricas para una query y devuelve un dict.
-
-    Args:
-        retrieved_ids:      IDs devueltos por el retriever, ordenados por score.
-        relevant_ids:       IDs de la query en el gold set (relevant + highly_relevant).
-        highly_relevant_ids: Subconjunto highly relevant.
-        ks:                 Valores de k para Recall@k y Precision@k.
-
-    Returns:
-        Dict con claves: recall@k, precision@k (para cada k), mrr, ndcg@10, ap.
-    """
+    """Calcula Recall@k, Precision@k, MRR, NDCG@10 y AP en un solo dict."""
     if ks is None:
         ks = [5, 10, 20]
 
-    # highly_relevant también cuenta como relevant
     all_relevant = list(set(relevant_ids) | set(highly_relevant_ids))
 
     result = {}
