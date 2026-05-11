@@ -131,6 +131,17 @@ Valores por defecto si no se especifican:
   pace=moderado, mobility=normal, group_type=pareja, start_hour=09:30,
   end_hour=20:00, include_meals=true, extra_notes=null.
 
+EJEMPLOS:
+
+Usuario: "Bilbao"
+Respuesta: {"city_scope":"Bilbao","duration_days":1,"interests":[],"budget_per_day":50,"pace":"moderado","mobility":"normal","group_type":"pareja","start_hour":"09:30","end_hour":"20:00","include_meals":true,"extra_notes":null}
+
+Usuario: "Quiero pasar dos días en Bilbao con mi pareja viendo museos y comiendo pintxos. Presupuesto 60€ al día, empezamos pronto, sobre las 9."
+Respuesta: {"city_scope":"Bilbao","duration_days":2,"interests":["museos","pintxos"],"budget_per_day":60,"pace":"moderado","mobility":"normal","group_type":"pareja","start_hour":"09:00","end_hour":"20:00","include_meals":true,"extra_notes":null}
+
+Usuario: "Somos una familia con niños pequeños y abuela en silla de ruedas. Buscamos 3 días por Bizkaia, algo tranquilo, sin gastar mucho (máximo 30€ por día). Solo por la mañana, terminamos a las 14:00."
+Respuesta: {"city_scope":"Bizkaia","duration_days":3,"interests":["familia","naturaleza"],"budget_per_day":30,"pace":"tranquilo","mobility":"reducida","group_type":"familia","start_hour":"09:30","end_hour":"14:00","include_meals":true,"extra_notes":"abuela en silla de ruedas, niños pequeños"}
+
 IMPORTANTE: responde SOLO con el JSON, sin explicaciones ni texto adicional."""
 
 
@@ -151,6 +162,7 @@ def interpret_preferences(query: str) -> UserPreferences:
             ],
             temperature=_temp_interp,
             max_tokens=500,
+            response_format={"type": "json_object"},
         )
         raw = response.choices[0].message.content.strip()
         logger.info("─── OLLAMA ← [interpret_preferences] %d chars ───", len(raw))
@@ -173,16 +185,20 @@ def interpret_preferences(query: str) -> UserPreferences:
 # ---------------------------------------------------------------------------
 
 def _format_day_for_prompt(day: DayItinerary) -> str:
-    """Serializa un día del itinerario como texto estructurado para el prompt."""
+    """Serializa un día del itinerario como texto estructurado para el prompt.
+    Incluye enriched_text recuperado de ChromaDB para que el LLM base sus
+    afirmaciones en contexto real (RAG real, mitigación de alucinaciones).
+    """
     lines = [f"=== DÍA {day.day} ==="]
     for pp in day.pois:
         poi = pp.poi
+        ctx = poi.enriched_text[:400] if poi.enriched_text else "(sin contexto adicional)"
         lines.append(
             f"  [{pp.start_time}–{pp.end_time}] {poi.name} ({poi.category})\n"
             f"    Dirección: {poi.address}\n"
-            f"    Descripción: {poi.description[:200]}…\n"
             f"    Precio: {poi.price} ({poi.price_numeric:.0f} €) | "
-            f"Duración estimada: {poi.visit_duration_minutes} min"
+            f"Duración estimada: {poi.visit_duration_minutes} min\n"
+            f"    CONTEXTO_RECUPERADO: {ctx}"
         )
         if pp.travel_minutes_from_previous > 0:
             lines.append(f"    → Desplazamiento desde anterior: ~{pp.travel_minutes_from_previous} min a pie")
@@ -232,7 +248,13 @@ INSTRUCCIONES:
 5. Tono: amigable, inspirador, informativo. Evita el lenguaje genérico de folleto.
 6. No repitas información ya dada en el itinerario estructurado de forma idéntica.
 7. Longitud objetivo: 200–300 palabras por día de itinerario.
-8. Comienza con un título atractivo y un párrafo de bienvenida a Bilbao/Bizkaia."""
+8. Comienza con un título atractivo y un párrafo de bienvenida a Bilbao/Bizkaia.
+
+CONTROL DE ALUCINACIONES (obligatorio):
+- Basa tus afirmaciones sobre cada POI en su bloque CONTEXTO_RECUPERADO correspondiente.
+- Si una información (fecha de construcción, arquitecto, historia) no aparece en el contexto,
+  descríbela en términos generales sin inventar datos concretos.
+- No menciones precios, horarios ni direcciones que no figuren en el itinerario o el contexto."""
 
 
 def _build_narrative_prompt(

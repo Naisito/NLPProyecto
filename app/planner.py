@@ -84,8 +84,10 @@ def _is_open_at(poi: POI, weekday_key: str, start_min: int, end_min: int) -> boo
     if open_min == 0 and close_min >= 1439:
         return True
 
-    # Suficiente si el POI abre antes de que acabe la franja
-    return open_min <= end_min and close_min >= start_min + poi.visit_duration_minutes
+    # La visita debe caber dentro de la intersección entre el horario del POI y la franja
+    effective_start = max(open_min, start_min)
+    effective_end   = min(close_min, end_min)
+    return (effective_end - effective_start) >= poi.visit_duration_minutes
 
 
 # ---------------------------------------------------------------------------
@@ -194,10 +196,25 @@ class ItineraryPlanner:
             weekday_idx = (start_weekday + day_idx) % 7
             weekday_key = WEEKDAYS[weekday_idx]
 
-            manana_start = _time_to_minutes(self.slot_manana["start"])
-            manana_end   = _time_to_minutes(self.slot_manana["end"])
-            tarde_start  = _time_to_minutes(self.slot_tarde["start"])
-            tarde_end    = _time_to_minutes(self.slot_tarde["end"])
+            cfg_manana_start = _time_to_minutes(self.slot_manana["start"])
+            cfg_manana_end   = _time_to_minutes(self.slot_manana["end"])
+            cfg_tarde_start  = _time_to_minutes(self.slot_tarde["start"])
+            cfg_tarde_end    = _time_to_minutes(self.slot_tarde["end"])
+
+            user_start = _time_to_minutes(preferences.start_hour)
+            user_end   = _time_to_minutes(preferences.end_hour)
+
+            if user_end - user_start < 240:
+                # Ventana estrecha (< 4h): un único slot continuo
+                manana_start = user_start
+                manana_end   = user_end
+                tarde_start  = user_end   # tarde efectivamente desactivada
+                tarde_end    = user_end
+            else:
+                manana_start = max(cfg_manana_start, user_start)
+                manana_end   = min(cfg_manana_end,   user_end)
+                tarde_start  = max(cfg_tarde_start,  user_start)
+                tarde_end    = min(cfg_tarde_end,     user_end)
 
             # --- Selección de POIs para este día ----------------------
             day_pois: List[Tuple[POI, float, float, float]] = []

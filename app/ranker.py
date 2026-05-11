@@ -8,11 +8,11 @@ Pipeline de ranking en tres etapas:
     semántica global entre la consulta y el texto del POI.
 
   Etapa 2 — Cross-encoder reranking:
-    Modelo cross-encoder/ms-marco-multilingual-MiniLM-L12-v2.
-    A diferencia del bi-encoder (BAAI/bge-m3), el cross-encoder analiza
-    conjuntamente la consulta y el texto del POI, ofreciendo una
-    relevancia más precisa. Referencia: Reimers & Gurevych (2019)
-    «Sentence-BERT». EMNLP 2019. arXiv:1908.10084.
+    Modelo BAAI/bge-reranker-v2-m3 (multilingual, alineado con bge-m3).
+    A diferencia del bi-encoder, el cross-encoder analiza conjuntamente
+    la consulta y el texto del POI para una relevancia más precisa.
+    Los scores raw se normalizan mediante min-max sobre el batch.
+    Referencia: Chen et al. (2024) «BGE M3-Embedding». arXiv:2402.03216.
 
   Etapa 3 — Scoring compuesto:
     Combina puntuaciones mediante pesos configurables:
@@ -114,7 +114,7 @@ class POIRanker:
     def __init__(self, reranker_model_name: str = None, cache_dir: str = None):
         self.cross_encoder = None
         model_name = reranker_model_name or settings.reranker.get(
-            "model_name", "cross-encoder/ms-marco-multilingual-MiniLM-L12-v2"
+            "model_name", "BAAI/bge-reranker-v2-m3"
         )
         cache = cache_dir or settings.reranker.get("cache_dir", "models_cache")
 
@@ -227,18 +227,22 @@ class POIRanker:
 
     def _cross_encode(self, query: str, pois: List[POI]) -> List[float]:
         """
-        Puntúa cada POI con el cross-encoder usando su enriched_text.
+        Puntúa cada POI con el cross-encoder usando su enriched_text completo.
         Si el cross-encoder no está disponible, devuelve scores uniformes.
-        Normaliza a [0, 1] mediante sigmoide.
+        Normaliza a [0, 1] mediante min-max sobre el batch (robusto para BGE y MSMARCO).
         """
         if self.cross_encoder is None:
             return [0.5] * len(pois)
 
-        pairs = [(query, poi.enriched_text[:512]) for poi in pois]
+        # Pasar texto completo; el CrossEncoder aplica truncado por tokens internamente
+        pairs = [(query, poi.enriched_text) for poi in pois]
         try:
             raw_scores = self.cross_encoder.predict(pairs, show_progress_bar=False)
-            # Sigmoide para normalizar a [0, 1]
-            normalized = [float(1 / (1 + math.exp(-s))) for s in raw_scores]
+            min_s = float(min(raw_scores))
+            max_s = float(max(raw_scores))
+            if max_s - min_s < 1e-6:
+                return [0.5] * len(pois)
+            normalized = [(float(s) - min_s) / (max_s - min_s) for s in raw_scores]
             return normalized
         except Exception as e:
             logger.warning(f"Error en cross-encoder predict: {e}")

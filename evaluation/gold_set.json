@@ -1,0 +1,371 @@
+{
+  "version": "1.0",
+  "description": "Gold set de evaluación del retriever. 40 queries anotadas manualmente sobre el corpus de 1109 POIs de Bilbao/Bizkaia. Criterios de relevancia basados en categoría, subcategoría, municipio y texto descriptivo (independientes del ranker para evitar circularidad).",
+  "annotation_criteria": {
+    "highly_relevant": "El POI es una referencia canónica del tema (Guggenheim para arte contemporáneo, Mercado de la Ribera para gastronomía, etc.)",
+    "relevant": "El POI pertenece a la categoría o municipio que la query implica",
+    "not_relevant": "El POI no tiene conexión con la intención de la query"
+  },
+  "queries": [
+    {
+      "id": "q001",
+      "group": "interes_principal",
+      "query": "Quiero ver museos en Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["museos"]},
+      "relevant_poi_ids": ["poi_369", "poi_370", "poi_371", "poi_372", "poi_373", "poi_374", "poi_375", "poi_376", "poi_377", "poi_378", "poi_379", "poi_380", "poi_381", "poi_382", "poi_383", "poi_384", "poi_385", "poi_386", "poi_387", "poi_388", "poi_389", "poi_390", "poi_391", "poi_392"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_381", "poi_385", "poi_373"],
+      "notes": "Todos los POIs con category=museo en Bilbao. Guggenheim (poi_371, poi_385), Bellas Artes (poi_381), Arqueológico (poi_373) son highly relevant."
+    },
+    {
+      "id": "q002",
+      "group": "interes_principal",
+      "query": "Me interesa el arte contemporáneo en Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["arte"]},
+      "relevant_poi_ids": ["poi_371", "poi_381", "poi_385", "poi_370", "poi_182", "poi_183", "poi_184", "poi_185", "poi_186", "poi_187", "poi_188", "poi_189", "poi_190", "poi_191", "poi_192", "poi_193", "poi_194", "poi_195", "poi_196", "poi_197"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_385", "poi_381"],
+      "notes": "Guggenheim (poi_371, poi_385) como icono del arte contemporáneo. Arte público en Bilbao (poi_182-197) también relevante. Bellas Artes (poi_381) relevante por colección arte."
+    },
+    {
+      "id": "q003",
+      "group": "interes_principal",
+      "query": "Quiero probar la gastronomía vasca en Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["gastronomía"]},
+      "relevant_poi_ids": ["poi_323", "poi_324", "poi_325", "poi_326", "poi_327", "poi_155"],
+      "highly_relevant_poi_ids": ["poi_324", "poi_155"],
+      "notes": "Corpus con muy pocos POIs gastronómicos (solo 5 mercados + Mercado de la Ribera). poi_324 (Erriberako Merkatua) y poi_155 (Mercado de la Ribera) son los más emblemáticos."
+    },
+    {
+      "id": "q004",
+      "group": "interes_principal",
+      "query": "Mercados y vida local de Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["gastronomía", "compras"]},
+      "relevant_poi_ids": ["poi_323", "poi_324", "poi_325", "poi_326", "poi_327", "poi_155"],
+      "highly_relevant_poi_ids": ["poi_155", "poi_324", "poi_325"],
+      "notes": "Mercado de la Ribera (poi_155) es el referente histórico. Los mercados de gastronomía (poi_323-327) son todos relevantes."
+    },
+    {
+      "id": "q005",
+      "group": "interes_principal",
+      "query": "Quiero disfrutar de la naturaleza en Bizkaia",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["naturaleza"]},
+      "relevant_poi_ids": ["poi_001", "poi_020", "poi_040", "poi_077", "poi_093", "poi_095", "poi_096", "poi_115", "poi_116", "poi_393", "poi_394", "poi_395", "poi_396", "poi_397", "poi_398", "poi_399", "poi_400", "poi_401", "poi_402", "poi_403", "poi_404", "poi_405"],
+      "highly_relevant_poi_ids": ["poi_001", "poi_077", "poi_393"],
+      "notes": "POIs de category=naturaleza o parque en Bizkaia. Parque Natural de Urkiola (poi_001) y urdaibai son altamente relevantes."
+    },
+    {
+      "id": "q006",
+      "group": "interes_principal",
+      "query": "Parques y jardines de Bilbao para pasear",
+      "preferences": {"city_scope": "Bilbao", "interests": ["naturaleza", "familia"]},
+      "relevant_poi_ids": ["poi_400", "poi_401", "poi_402", "poi_403", "poi_404", "poi_405", "poi_406", "poi_407", "poi_408", "poi_409", "poi_447"],
+      "highly_relevant_poi_ids": ["poi_401", "poi_402", "poi_447"],
+      "notes": "Parques urbanos de Bilbao (poi_400-409). Abandoibarra (poi_401) y Albia (poi_402) son los más conocidos. poi_447 (Guggenheim parkea) es relevante por ser espacio verde junto al museo."
+    },
+    {
+      "id": "q007",
+      "group": "interes_principal",
+      "query": "Playas bonitas en Bizkaia",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["playa"]},
+      "relevant_poi_ids": ["poi_020", "poi_040", "poi_077", "poi_095", "poi_096", "poi_115", "poi_116", "poi_589", "poi_590", "poi_591", "poi_633", "poi_638", "poi_684", "poi_729", "poi_747", "poi_748", "poi_770", "poi_774", "poi_821", "poi_822"],
+      "highly_relevant_poi_ids": ["poi_729", "poi_590", "poi_077"],
+      "notes": "Todas las playas del corpus (category=naturaleza con subcategory playa o nombre playa). Ereaga/Getxo (poi_729), Azkorri (poi_590) y Baquio (poi_077) son emblemáticas."
+    },
+    {
+      "id": "q008",
+      "group": "interes_principal",
+      "query": "Qué ver en Getxo junto al mar",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["playa", "pueblos costeros"]},
+      "relevant_poi_ids": ["poi_704", "poi_705", "poi_706", "poi_707", "poi_708", "poi_709", "poi_710", "poi_711", "poi_712", "poi_713", "poi_714", "poi_715", "poi_716", "poi_717", "poi_718", "poi_729"],
+      "highly_relevant_poi_ids": ["poi_729", "poi_704"],
+      "notes": "POIs en municipio Getxo. La playa de Ereaga (poi_729) es el elemento marino principal."
+    },
+    {
+      "id": "q009",
+      "group": "interes_principal",
+      "query": "Historia y monumentos de Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["historia"]},
+      "relevant_poi_ids": ["poi_330", "poi_332", "poi_334", "poi_340", "poi_350", "poi_359", "poi_360", "poi_361", "poi_531", "poi_122", "poi_127", "poi_128", "poi_129", "poi_130", "poi_131"],
+      "highly_relevant_poi_ids": ["poi_531", "poi_361", "poi_340"],
+      "notes": "Catedral Santiago (poi_531), Casco Viejo y monumentos históricos de Bilbao. poi_361 (Museo Bellas Artes, category=historia) también relevante."
+    },
+    {
+      "id": "q010",
+      "group": "interes_principal",
+      "query": "Patrimonio industrial de Bizkaia",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["historia", "cultura vasca"]},
+      "relevant_poi_ids": ["poi_008", "poi_010", "poi_011", "poi_012", "poi_013", "poi_014", "poi_015", "poi_049", "poi_050", "poi_051", "poi_068", "poi_378"],
+      "highly_relevant_poi_ids": ["poi_068", "poi_378", "poi_017"],
+      "notes": "POIs con subcategory=patrimonio industrial. La Encartada (poi_068) y Konsoni Lantegia (poi_378) son referentes del patrimonio minero/fabril vasco."
+    },
+    {
+      "id": "q011",
+      "group": "multi_interes",
+      "query": "Museos y gastronomía en Bilbao para un fin de semana",
+      "preferences": {"city_scope": "Bilbao", "interests": ["museos", "gastronomía"]},
+      "relevant_poi_ids": ["poi_371", "poi_381", "poi_385", "poi_370", "poi_373", "poi_323", "poi_324", "poi_325", "poi_326", "poi_327", "poi_155", "poi_377"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_381", "poi_324", "poi_155"],
+      "notes": "Combina los mejores museos de Bilbao con los mercados gastronómicos. Guggenheim + Mercado de la Ribera es la combinación icónica."
+    },
+    {
+      "id": "q012",
+      "group": "multi_interes",
+      "query": "Naturaleza e historia en Bizkaia",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["naturaleza", "historia"]},
+      "relevant_poi_ids": ["poi_001", "poi_002", "poi_003", "poi_034", "poi_035", "poi_036", "poi_099", "poi_100", "poi_101", "poi_393", "poi_394", "poi_395", "poi_679", "poi_681"],
+      "highly_relevant_poi_ids": ["poi_001", "poi_679", "poi_681"],
+      "notes": "Parque de Urkiola (poi_001) como referente de naturaleza + historia. Necrópolis de Momoitio (poi_679) y Castillo de Butrón (poi_681) como hitos históricos en entorno natural."
+    },
+    {
+      "id": "q013",
+      "group": "multi_interes",
+      "query": "Arte y arquitectura emblemática de Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["arte", "arquitectura"]},
+      "relevant_poi_ids": ["poi_371", "poi_381", "poi_122", "poi_127", "poi_128", "poi_129", "poi_130", "poi_131", "poi_132", "poi_133", "poi_134", "poi_135", "poi_136", "poi_137", "poi_138", "poi_182", "poi_183", "poi_189"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_122", "poi_151"],
+      "notes": "Guggenheim como hito arquitectónico y artístico. Isozaki Atea (poi_151), Alhóndiga (poi_122) y otros iconos del Bilbao moderno."
+    },
+    {
+      "id": "q014",
+      "group": "multi_interes",
+      "query": "Playas y pueblos pesqueros de la costa vasca",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["playa", "pueblos costeros"]},
+      "relevant_poi_ids": ["poi_020", "poi_077", "poi_095", "poi_096", "poi_104", "poi_105", "poi_106", "poi_107", "poi_108", "poi_109", "poi_115", "poi_116", "poi_633", "poi_638", "poi_684", "poi_729"],
+      "highly_relevant_poi_ids": ["poi_077", "poi_104", "poi_638"],
+      "notes": "Bermeo, Baquio, Ea, Elantxobe como pueblos pesqueros emblemáticos. Sus playas adyacentes también son relevantes."
+    },
+    {
+      "id": "q015",
+      "group": "multi_interes",
+      "query": "Cultura vasca e historia del País Vasco",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["cultura vasca", "historia"]},
+      "relevant_poi_ids": ["poi_373", "poi_376", "poi_375", "poi_685", "poi_686", "poi_687", "poi_688", "poi_689", "poi_690", "poi_691", "poi_692", "poi_693", "poi_694", "poi_068"],
+      "highly_relevant_poi_ids": ["poi_685", "poi_373", "poi_068"],
+      "notes": "Gernika (poi_685-694) como símbolo de la cultura vasca. Bizkaiko Arkeologia Museoa (poi_373) y Euskararen Etxea (poi_375) directamente relacionados con la cultura vasca."
+    },
+    {
+      "id": "q016",
+      "group": "restricciones",
+      "query": "Visitar Bilbao con movilidad reducida, todo accesible",
+      "preferences": {"city_scope": "Bilbao", "interests": ["museos", "arquitectura"], "mobility": "reducida"},
+      "relevant_poi_ids": ["poi_122", "poi_123", "poi_124", "poi_125", "poi_126", "poi_127", "poi_128", "poi_129", "poi_130", "poi_131", "poi_132", "poi_133", "poi_134", "poi_135", "poi_136"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_381", "poi_122"],
+      "notes": "Solo POIs con accessibility=true en Bilbao. Primeras posiciones en poi_122+ (arquitectura Bilbao accesible). Los museos principales también son accesibles."
+    },
+    {
+      "id": "q017",
+      "group": "restricciones",
+      "query": "Actividades gratuitas en Bilbao, presupuesto muy bajo",
+      "preferences": {"city_scope": "Bilbao", "interests": ["arte", "historia"], "budget_per_day": 10.0},
+      "relevant_poi_ids": ["poi_122", "poi_123", "poi_124", "poi_125", "poi_126", "poi_127", "poi_128", "poi_129", "poi_130", "poi_131", "poi_133", "poi_134", "poi_135", "poi_136", "poi_182", "poi_183", "poi_184", "poi_185", "poi_400", "poi_401", "poi_402"],
+      "highly_relevant_poi_ids": ["poi_182", "poi_400", "poi_401"],
+      "notes": "POIs con price_numeric=0.0 en Bilbao. Arte público (poi_182+) y parques (poi_400+) son opciones gratuitas de calidad."
+    },
+    {
+      "id": "q018",
+      "group": "restricciones",
+      "query": "Ruta de un día por el centro de Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["arquitectura", "historia", "gastronomía"]},
+      "relevant_poi_ids": ["poi_122", "poi_127", "poi_128", "poi_130", "poi_131", "poi_132", "poi_133", "poi_155", "poi_323", "poi_324", "poi_325", "poi_371", "poi_381", "poi_531", "poi_400", "poi_401"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_531", "poi_155", "poi_122"],
+      "notes": "Puntos clave del centro de Bilbao: Guggenheim, Catedral, Mercado Ribera, Alhóndiga, parques ribera. Itinerario céntrico coherente."
+    },
+    {
+      "id": "q019",
+      "group": "restricciones",
+      "query": "Plan familiar con niños en Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["familia", "museos", "naturaleza"], "group_type": "familia"},
+      "relevant_poi_ids": ["poi_400", "poi_401", "poi_402", "poi_403", "poi_404", "poi_405", "poi_371", "poi_373", "poi_377", "poi_447", "poi_384"],
+      "highly_relevant_poi_ids": ["poi_377", "poi_371", "poi_401"],
+      "notes": "Itsasmuseum (poi_377, museo marítimo) ideal para niños. Guggenheim (poi_371) tiene actividades infantiles. Parques (poi_400+) para actividad al aire libre."
+    },
+    {
+      "id": "q020",
+      "group": "restricciones",
+      "query": "Solo tengo la tarde libre en Bilbao, de 17:00 a 20:00",
+      "preferences": {"city_scope": "Bilbao", "interests": ["museos", "arte"], "start_hour": "17:00", "end_hour": "20:00"},
+      "relevant_poi_ids": ["poi_371", "poi_381", "poi_385", "poi_373", "poi_377", "poi_379", "poi_383", "poi_389"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_381"],
+      "notes": "POIs con horario de apertura por la tarde en Bilbao. Guggenheim y Bellas Artes tienen horario extendido. Nota: la relevancia real depende del horario exacto de cada POI."
+    },
+    {
+      "id": "q021",
+      "group": "parafrasís",
+      "query": "Quiero ver obras de arte y exposiciones",
+      "preferences": {"city_scope": "Bilbao", "interests": ["arte"]},
+      "relevant_poi_ids": ["poi_371", "poi_381", "poi_385", "poi_370", "poi_379", "poi_383", "poi_384", "poi_386", "poi_387", "poi_388", "poi_389", "poi_390", "poi_391", "poi_392"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_381", "poi_385"],
+      "notes": "Paráfrasis de 'museos de arte'. 'Obras de arte' y 'exposiciones' deberían recuperar museos aunque no use el término exacto. Test de robustez semántica."
+    },
+    {
+      "id": "q022",
+      "group": "parafrasís",
+      "query": "Dónde puedo comer bien y disfrutar de la cocina local",
+      "preferences": {"city_scope": "Bilbao", "interests": ["gastronomía"]},
+      "relevant_poi_ids": ["poi_323", "poi_324", "poi_325", "poi_326", "poi_327", "poi_155"],
+      "highly_relevant_poi_ids": ["poi_155", "poi_324"],
+      "notes": "Paráfrasis de 'gastronomía'. 'Comer bien' y 'cocina local' deben recuperar mercados y puntos gastronómicos aunque no usen la palabra 'gastronomía'."
+    },
+    {
+      "id": "q023",
+      "group": "parafrasís",
+      "query": "Edificios emblemáticos y arquitectura especial de Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["arquitectura"]},
+      "relevant_poi_ids": ["poi_122", "poi_127", "poi_128", "poi_129", "poi_130", "poi_131", "poi_132", "poi_133", "poi_134", "poi_135", "poi_136", "poi_137", "poi_138", "poi_139", "poi_140", "poi_141", "poi_151"],
+      "highly_relevant_poi_ids": ["poi_122", "poi_151", "poi_371"],
+      "notes": "Paráfrasis de 'arquitectura'. 'Edificios emblemáticos' debe recuperar subcategoría=edificio emblemático y la arquitectura moderna de Bilbao."
+    },
+    {
+      "id": "q024",
+      "group": "parafrasís",
+      "query": "Pasear por la ría de Bilbao y el waterfront",
+      "preferences": {"city_scope": "Bilbao", "interests": ["naturaleza", "arquitectura"]},
+      "relevant_poi_ids": ["poi_401", "poi_447", "poi_122", "poi_123", "poi_127", "poi_371", "poi_385", "poi_189", "poi_190"],
+      "highly_relevant_poi_ids": ["poi_401", "poi_447", "poi_371"],
+      "notes": "Paráfrasis de ribera/ría. Abandoibarra (poi_401), Guggenheim park (poi_447) están en el waterfront. Test de recuperación por contexto geográfico específico."
+    },
+    {
+      "id": "q025",
+      "group": "parafrasís",
+      "query": "Los sitios imprescindibles que hay que ver en Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["museos", "historia", "arquitectura"]},
+      "relevant_poi_ids": ["poi_371", "poi_381", "poi_531", "poi_122", "poi_151", "poi_155", "poi_324", "poi_401", "poi_528"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_531", "poi_122"],
+      "notes": "Query genérica 'must-see'. Guggenheim, Catedral Santiago, Alhóndiga, Mercado Ribera son los referentes turísticos de Bilbao."
+    },
+    {
+      "id": "q026",
+      "group": "parafrasís",
+      "query": "Cultura y patrimonio de Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["cultura vasca", "historia", "museos"]},
+      "relevant_poi_ids": ["poi_371", "poi_373", "poi_375", "poi_377", "poi_378", "poi_379", "poi_381", "poi_384", "poi_385", "poi_531", "poi_528"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_373", "poi_381"],
+      "notes": "Paráfrasis amplia de 'museos + historia'. 'Cultura y patrimonio' debe recuperar la oferta cultural de Bilbao sin requerir términos exactos."
+    },
+    {
+      "id": "q027",
+      "group": "parafrasís",
+      "query": "Actividades al aire libre y ejercicio en la naturaleza de Bizkaia",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["naturaleza", "senderismo"]},
+      "relevant_poi_ids": ["poi_001", "poi_040", "poi_077", "poi_093", "poi_095", "poi_096", "poi_393", "poi_394", "poi_395", "poi_396", "poi_397", "poi_398", "poi_399"],
+      "highly_relevant_poi_ids": ["poi_001", "poi_393"],
+      "notes": "Paráfrasis de 'senderismo/naturaleza'. 'Ejercicio al aire libre' sin mencionar senderismo. Test de recuperación por semántica de actividad física en naturaleza."
+    },
+    {
+      "id": "q028",
+      "group": "parafrasís",
+      "query": "Bañarse en el mar y tomar el sol en la costa vasca",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["playa"]},
+      "relevant_poi_ids": ["poi_020", "poi_040", "poi_077", "poi_095", "poi_096", "poi_115", "poi_116", "poi_589", "poi_590", "poi_591", "poi_633", "poi_638", "poi_684", "poi_729", "poi_747", "poi_748", "poi_770", "poi_774"],
+      "highly_relevant_poi_ids": ["poi_729", "poi_590", "poi_077"],
+      "notes": "Paráfrasis de 'playa'. 'Bañarse en el mar' sin usar la palabra playa. Test clave de robustez semántica del retriever denso."
+    },
+    {
+      "id": "q029",
+      "group": "parafrasís",
+      "query": "Castillos, torres y arquitectura medieval del País Vasco",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["historia"]},
+      "relevant_poi_ids": ["poi_003", "poi_067", "poi_085", "poi_090", "poi_109", "poi_111", "poi_120", "poi_627", "poi_628", "poi_649", "poi_650", "poi_681", "poi_1098"],
+      "highly_relevant_poi_ids": ["poi_681", "poi_003", "poi_1098"],
+      "notes": "Paráfrasis de historia medieval. Torres (poi_003 Torre Muntsaratz), castillos (poi_681 Butrón, poi_1098 Unzueta). BM25 debería superar al denso en términos exactos 'castillo', 'torre medieval'."
+    },
+    {
+      "id": "q030",
+      "group": "parafrasís",
+      "query": "Galerías de arte y exposiciones temporales en Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["arte", "museos"]},
+      "relevant_poi_ids": ["poi_370", "poi_371", "poi_381", "poi_383", "poi_384", "poi_385", "poi_386", "poi_387", "poi_388", "poi_389", "poi_390", "poi_391", "poi_392"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_381", "poi_370"],
+      "notes": "Paráfrasis de museos de arte. 'Galerías' y 'exposiciones temporales' como términos alternativos. Bilboko Arte Eder museoa (poi_370) cubre específicamente este nicho."
+    },
+    {
+      "id": "q031",
+      "group": "adversarial",
+      "query": "No quiero museos, solo quiero naturaleza y aire libre",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["naturaleza"]},
+      "relevant_poi_ids": ["poi_001", "poi_040", "poi_077", "poi_093", "poi_095", "poi_096", "poi_115", "poi_116", "poi_393", "poi_394", "poi_395", "poi_396", "poi_397", "poi_398", "poi_399"],
+      "highly_relevant_poi_ids": ["poi_001", "poi_393", "poi_077"],
+      "notes": "Query adversarial con negación explícita. El retriever denso puede confundirse por la mención a 'museos'. Los museos NO deben aparecer entre los relevantes. Solo naturaleza/parques."
+    },
+    {
+      "id": "q032",
+      "group": "adversarial",
+      "query": "Solo me interesa Getxo, no quiero salir de allí",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["playa", "arquitectura"]},
+      "relevant_poi_ids": ["poi_704", "poi_705", "poi_706", "poi_707", "poi_708", "poi_709", "poi_710", "poi_711", "poi_712", "poi_713", "poi_714", "poi_715", "poi_716", "poi_717", "poi_718", "poi_729"],
+      "highly_relevant_poi_ids": ["poi_729", "poi_704", "poi_712"],
+      "notes": "Restricción geográfica estricta. Solo POIs en municipio=Getxo. Test de scope filtering. El sistema debe respetar el municipio sin confundir con otros municipios costeros."
+    },
+    {
+      "id": "q033",
+      "group": "adversarial",
+      "query": "Surf y deportes acuáticos en la costa de Bizkaia",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["surf", "playa"]},
+      "relevant_poi_ids": ["poi_077", "poi_095", "poi_096", "poi_115", "poi_116", "poi_589", "poi_590", "poi_591", "poi_729", "poi_747", "poi_748"],
+      "highly_relevant_poi_ids": ["poi_077", "poi_590"],
+      "notes": "El corpus no tiene POIs con categoría surf. La query debe recuperar playas donde el surf sea posible (Baquio, Azkorri son playas de surf conocidas). Test de paráfrasis difícil: surf → playa atlántica."
+    },
+    {
+      "id": "q034",
+      "group": "adversarial",
+      "query": "Yacimientos arqueológicos, dólmenes y prehistoria de Bizkaia",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["historia"]},
+      "relevant_poi_ids": ["poi_002", "poi_034", "poi_035", "poi_036", "poi_037", "poi_038", "poi_039", "poi_099", "poi_100", "poi_101", "poi_102", "poi_110", "poi_112", "poi_113", "poi_338", "poi_679"],
+      "highly_relevant_poi_ids": ["poi_002", "poi_679", "poi_338"],
+      "notes": "Query muy específica sobre prehistoria. BM25 debería superar claramente al denso para términos exactos como 'dólmen', 'megalítico', 'yacimiento'. Test de lexical matching."
+    },
+    {
+      "id": "q035",
+      "group": "adversarial",
+      "query": "Solo quiero comer y beber, nada de museos ni monumentos",
+      "preferences": {"city_scope": "Bilbao", "interests": ["gastronomía", "pintxos"]},
+      "relevant_poi_ids": ["poi_323", "poi_324", "poi_325", "poi_326", "poi_327", "poi_155"],
+      "highly_relevant_poi_ids": ["poi_155", "poi_324", "poi_325"],
+      "notes": "Query adversarial con negación. Solo relevantes los mercados y puntos gastronómicos. Riesgo: el retriever puede devolver museos por la mención a 'monumentos'. Test de robustez."
+    },
+    {
+      "id": "q036",
+      "group": "adversarial",
+      "query": "Arquitectura vanguardista y deconstructivista del siglo XX en Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["arquitectura"]},
+      "relevant_poi_ids": ["poi_122", "poi_132", "poi_151", "poi_371"],
+      "highly_relevant_poi_ids": ["poi_371", "poi_122", "poi_151"],
+      "notes": "Query muy específica sobre estilo arquitectónico. Guggenheim (poi_371, Gehry), Alhóndiga (poi_122, Starck/Arata Isozaki), Isozaki Atea (poi_151). Prueba de especificidad semántica."
+    },
+    {
+      "id": "q037",
+      "group": "adversarial",
+      "query": "Visitar Gernika y conocer su historia",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["historia", "cultura vasca"]},
+      "relevant_poi_ids": ["poi_685", "poi_686", "poi_687", "poi_688", "poi_689", "poi_690", "poi_691", "poi_692", "poi_693", "poi_694"],
+      "highly_relevant_poi_ids": ["poi_685", "poi_686", "poi_689"],
+      "notes": "Query con topónimo específico 'Gernika'. BM25 debería recuperar perfectamente por coincidencia léxica. Test de BM25 vs dense en búsqueda por nombre de lugar."
+    },
+    {
+      "id": "q038",
+      "group": "adversarial",
+      "query": "Iglesias, catedrales y lugares de culto en Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["historia", "arquitectura"]},
+      "relevant_poi_ids": ["poi_525", "poi_526", "poi_527", "poi_528", "poi_529", "poi_530", "poi_531", "poi_532", "poi_533", "poi_534", "poi_543", "poi_554"],
+      "highly_relevant_poi_ids": ["poi_531", "poi_528", "poi_543"],
+      "notes": "Catedral de Santiago (poi_531) y Basílica de Begoña (poi_528) son los referentes religiosos de Bilbao. Test de recuperación de categoría 'religioso' (poco representada en intereses del usuario)."
+    },
+    {
+      "id": "q039",
+      "group": "adversarial",
+      "query": "Teatro, ópera y eventos culturales en Bilbao",
+      "preferences": {"city_scope": "Bilbao", "interests": ["arte", "cultura vasca"]},
+      "relevant_poi_ids": ["poi_272", "poi_275", "poi_276", "poi_289", "poi_294", "poi_296", "poi_297", "poi_301", "poi_303"],
+      "highly_relevant_poi_ids": ["poi_289", "poi_294", "poi_296"],
+      "notes": "Teatros de Bilbao (subcategory=teatro). El sistema tiene categoría arquitectura/teatro. BM25 debería ayudar con el término exacto 'teatro'."
+    },
+    {
+      "id": "q040",
+      "group": "adversarial",
+      "query": "Rutas de senderismo y caminos por Bizkaia",
+      "preferences": {"city_scope": "Bizkaia", "interests": ["senderismo", "naturaleza"]},
+      "relevant_poi_ids": ["poi_001", "poi_040", "poi_077", "poi_093", "poi_095", "poi_096", "poi_393", "poi_394", "poi_395", "poi_396", "poi_397", "poi_398", "poi_399"],
+      "highly_relevant_poi_ids": ["poi_001", "poi_393"],
+      "notes": "El corpus no tiene POIs de tipo 'ruta de senderismo'. La query debe recuperar parques naturales y espacios naturales donde hacer senderismo. Test similar al q033 (surf): interés sin categoría propia."
+    }
+  ]
+}

@@ -163,12 +163,10 @@ class SemanticRetriever:
             if preferences.mobility == "reducida" and not poi.accessibility:
                 continue
 
-            # Filtro de presupuesto (excluir POIs claramente fuera de presupuesto)
+            # Descuento de score para POIs que superan el 80% del presupuesto diario
             daily_budget = preferences.budget_per_day
-            # No excluimos POIs de precio 0 (gratis) ni aplicamos filtro muy estricto
-            # — el ranker penalizará los caros
             if poi.price_numeric > daily_budget * 0.8 and poi.price_numeric > 0:
-                pass  # se mantienen pero serán penalizados en el ranking
+                score *= 0.7
 
             # Filtro geográfico más permisivo si se filtra sólo por Bilbao
             if (

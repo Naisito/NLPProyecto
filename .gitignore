@@ -51,7 +51,7 @@ desktop.ini
 *.log
 
 # Project runtime caches and generated assets
-/db/chroma_db/
+/db/
 /models_cache/
 
 # Optional local markers
