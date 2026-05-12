@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List, Dict, Optional, Tuple
 
 from app.config import settings
@@ -7,6 +8,18 @@ from app.models import POI, UserPreferences
 from app.poi_manager import POIManager
 
 logger = logging.getLogger("turismo_rag")
+
+_NEGATION_PATTERNS = [
+    re.compile(r"(?:no\s+quiero|no\s+me\s+interesa|sin|evitar|evitando|nada\s+de)\s+(\w[\w\s]*)"),
+    re.compile(r"(?:no\s+(?:me\s+)?gustan?)\s+(?:los\s+|las\s+)?(\w[\w\s]*)"),
+]
+
+
+def _strip_negations(text: str) -> str:
+    """Elimina frases de negación del texto para no contaminar el embedding."""
+    for pat in _NEGATION_PATTERNS:
+        text = pat.sub("", text)
+    return " ".join(text.split())
 
 
 def _semantic_expand_interest(interest: str, embedder, category_embeddings: dict) -> str:
@@ -95,6 +108,7 @@ def _build_query(preferences: UserPreferences, embedder=None, category_embedding
     if not query:
         query = "turismo cultural naturaleza gastronomía Bilbao Bizkaia"
 
+    query = _strip_negations(query)
     logger.debug(f"Query de recuperación: '{query}'")
     return query
 
@@ -176,6 +190,7 @@ class SemanticRetriever:
         return candidates
 
     def search_by_text(self, query: str, k: int = 10) -> List[Tuple[POI, float]]:
+        query = _strip_negations(query)
         query_vector = self.embedder.encode([query])[0]
         raw = self.vector_store.search_with_scores(query_vector=query_vector, n_results=k)
         results = []

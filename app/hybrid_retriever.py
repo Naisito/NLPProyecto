@@ -4,9 +4,19 @@ from typing import Dict, List, Optional, Tuple
 from app.config import settings
 from app.infra.bm25_index import BM25Index
 from app.models import POI, UserPreferences
-from app.retriever import SCOPE_FILTER, SemanticRetriever, _build_query
+from app.retriever import SCOPE_FILTER, SemanticRetriever, _build_query, _strip_negations
 
 logger = logging.getLogger("turismo_rag")
+
+
+def _lexical_boost(poi: POI, query: str, factor: float = 0.06) -> float:
+    """Pequeño boost si los tokens de la query aparecen en category/subcategory/tags del POI."""
+    query_tokens = set(query.lower().split())
+    if not query_tokens:
+        return 1.0
+    poi_text = f"{poi.category} {poi.subcategory} {' '.join(poi.tags)}".lower()
+    hits = sum(1 for t in query_tokens if len(t) > 2 and t in poi_text)
+    return 1.0 + factor * hits
 
 
 def _rrf_fusion(
@@ -161,6 +171,9 @@ class HybridRetriever:
             if daily_budget < 30 and poi.price_numeric == 0.0:
                 score *= 1.1
 
+            # Boost léxico: términos de la query en category/subcategory/tags
+            score *= _lexical_boost(poi, query)
+
             candidates.append((poi, score))
             if len(candidates) >= k:
                 break
@@ -170,8 +183,9 @@ class HybridRetriever:
 
     def retrieve_raw(self, query: str, k: int = 20) -> List[Tuple[POI, float]]:
         """Búsqueda híbrida directa por texto, sin UserPreferences."""
-        dense_raw = self.dense.search_by_text(query, k=k * 2)
-        bm25_raw_idx = self.bm25.search(query, k=k * 2)
+        cleaned = _strip_negations(query)
+        dense_raw = self.dense.search_by_text(query, k=k * 2)  # search_by_text ya limpia internamente
+        bm25_raw_idx = self.bm25.search(cleaned, k=k * 2)
 
         bm25_raw: List[Tuple[POI, float]] = []
         for doc_idx, score in bm25_raw_idx:
@@ -184,8 +198,11 @@ class HybridRetriever:
             bm25_raw.append((poi, score))
 
         if self.fusion == "linear":
-            return _linear_fusion(dense_raw, bm25_raw, self.linear_alpha)[:k]
-        return _rrf_fusion(dense_raw, bm25_raw, self.rrf_k)[:k]
+            fused = _linear_fusion(dense_raw, bm25_raw, self.linear_alpha)
+        else:
+            fused = _rrf_fusion(dense_raw, bm25_raw, self.rrf_k)
+
+        return [(poi, score * _lexical_boost(poi, cleaned)) for poi, score in fused[:k]]
 
     def search_by_text(self, query: str, k: int = 10) -> List[Tuple[POI, float]]:
         return self.retrieve_raw(query, k=k)

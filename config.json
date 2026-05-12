@@ -57,7 +57,7 @@
   "retrieval": {
     "mode": "hybrid",
     "fusion": "rrf",
-    "rrf_k": 10,
-    "linear_alpha": 0.7
+    "rrf_k": 20,
+    "linear_alpha": 0.65
   }
 }
