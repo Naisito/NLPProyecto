@@ -428,7 +428,10 @@ def _api_post(path: str, payload: dict) -> Optional[dict]:
         r.raise_for_status()
         return r.json()
     except httpx.HTTPStatusError as e:
-        detail = e.response.json().get("detail", str(e))
+        try:
+            detail = e.response.json().get("detail", str(e))
+        except Exception:
+            detail = e.response.text[:300] or str(e)
         st.error(f"Error de la API ({e.response.status_code}): {detail}")
         return None
     except Exception as e:
@@ -627,6 +630,86 @@ def _try_folium_map(day_pois: list):
         st.info("Instala `folium` y `streamlit-folium` para ver el mapa interactivo.")
     except Exception as e:
         st.warning(f"Error renderizando mapa: {e}")
+
+
+def _fetch_all_pois() -> list:
+    if "cached_all_pois" not in st.session_state:
+        data = _api_get("/api/pois")
+        st.session_state.cached_all_pois = data.get("pois", []) if data else []
+    return st.session_state.cached_all_pois
+
+
+_FOLIUM_COLORS = [
+    "red", "blue", "green", "purple", "orange",
+    "darkred", "darkblue", "cadetblue", "darkgreen", "lightred",
+]
+_FOLIUM_CSS_COLORS = {
+    "red": "#d63e2a", "blue": "#2a81cb", "green": "#2aad27",
+    "purple": "#9c2bcb", "orange": "#cb8427", "darkred": "#a23336",
+    "darkblue": "#00649f", "cadetblue": "#436978", "darkgreen": "#728224",
+    "lightred": "#ff8e7f",
+}
+
+
+def _render_pois_map(pois: list, height: int = 480):
+    try:
+        import folium
+        from streamlit_folium import st_folium
+
+        BILBAO_CENTER = [43.263, -2.935]
+
+        categories = sorted({p.get("category", "Otros") for p in pois if p.get("category")})
+        cat_color = {
+            cat: _FOLIUM_COLORS[i % len(_FOLIUM_COLORS)]
+            for i, cat in enumerate(categories)
+        }
+
+        if not pois:
+            m = folium.Map(location=BILBAO_CENTER, zoom_start=12, tiles="CartoDB positron")
+            st_folium(m, width="100%", height=height, returned_objects=[])
+            return
+
+        lats = [p["coordinates"]["lat"] for p in pois if p.get("coordinates")]
+        lons = [p["coordinates"]["lon"] for p in pois if p.get("coordinates")]
+        center = [sum(lats) / len(lats), sum(lons) / len(lons)] if lats else BILBAO_CENTER
+
+        m = folium.Map(location=center, zoom_start=12, tiles="CartoDB positron")
+
+        for poi in pois:
+            coords = poi.get("coordinates")
+            if not coords:
+                continue
+            cat = poi.get("category", "Otros")
+            color = cat_color.get(cat, "gray")
+            desc = poi.get("description", "")
+            popup_html = (
+                f"<b>{poi['name']}</b><br>"
+                f"<i>{cat} — {poi.get('municipality', '')}</i><br>"
+                f"{desc[:120]}{'…' if len(desc) > 120 else ''}<br>"
+                f"<small>Precio: {poi.get('price', '—')} | "
+                f"{poi.get('visit_duration_minutes', '?')} min</small>"
+            )
+            folium.Marker(
+                location=[coords["lat"], coords["lon"]],
+                popup=folium.Popup(popup_html, max_width=230),
+                tooltip=poi["name"],
+                icon=folium.Icon(color=color, icon="info-sign"),
+            ).add_to(m)
+
+        st_folium(m, width="100%", height=height, returned_objects=[])
+
+        chips = "".join(
+            f'<span class="mini-chip">'
+            f'<span style="color:{_FOLIUM_CSS_COLORS.get(col, col)}">●</span> {cat}'
+            f'</span>'
+            for cat, col in cat_color.items()
+        )
+        st.markdown(f'<div class="mini-chip-row">{chips}</div>', unsafe_allow_html=True)
+
+    except ImportError:
+        st.info("Instala `folium` y `streamlit-folium` para ver el mapa interactivo.")
+    except Exception as e:
+        st.warning(f"Error renderizando mapa de POIs: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -929,43 +1012,133 @@ def page_explore():
         unsafe_allow_html=True,
     )
 
-    col_search, col_filters = st.columns([3, 2])
-    with col_search:
+    # ── Filtros ───────────────────────────────────────────────────────────────
+    all_pois = _fetch_all_pois()
+    all_categories    = sorted({p.get("category", "") for p in all_pois if p.get("category")})
+    all_municipalities = sorted({p.get("municipality", "") for p in all_pois if p.get("municipality")})
+
+    col_cat, col_mun, col_num = st.columns([3, 3, 1])
+    with col_cat:
+        cat_filter = st.multiselect("Categorías en el mapa", all_categories, placeholder="Selecciona para ver en el mapa…")
+    with col_mun:
+        mun_filter = st.multiselect("Municipio", all_municipalities, placeholder="Todos los municipios")
+    with col_num:
+        map_limit = st.number_input("Máx. en mapa", min_value=1, max_value=500, value=100, step=10)
+
+    filtered_pois = [
+        p for p in all_pois
+        if (not cat_filter or p.get("category") in cat_filter)
+        and (not mun_filter or p.get("municipality") in mun_filter)
+    ]
+
+    # Resetear paginación cuando cambian los filtros
+    filter_sig = (tuple(cat_filter), tuple(mun_filter))
+    if st.session_state.get("explore_filter_sig") != filter_sig:
+        st.session_state["explore_filter_sig"] = filter_sig
+        st.session_state["explore_page"] = 0
+
+    # ── Mapa global ───────────────────────────────────────────────────────────
+    if not cat_filter:
+        st.info("Selecciona una o varias categorías para ver los POIs en el mapa.")
+        _render_pois_map([])
+    elif filtered_pois:
+        map_pois = filtered_pois[:map_limit]
+        st.markdown(f"**{len(map_pois)}** POIs en el mapa ({len(filtered_pois)} coinciden con los filtros)")
+        _render_pois_map(map_pois)
+    else:
+        st.warning("Sin resultados con estos filtros.")
+        _render_pois_map([])
+
+    st.markdown("---")
+
+    # ── Búsqueda semántica ────────────────────────────────────────────────────
+    if "explore_search_counter" not in st.session_state:
+        st.session_state.explore_search_counter = 0
+
+    col_q, col_btn, col_clear = st.columns([5, 1, 1])
+    with col_q:
         query = st.text_input(
             "Búsqueda semántica",
             placeholder="Ej: museos de arte contemporáneo, playas con surf…",
+            key=f"explore_q_{st.session_state.explore_search_counter}",
         )
-    with col_filters:
-        stats = _api_get("/api/stats") or {}
-        categories    = ["Todos"] + stats.get("categories", [])
-        municipalities = ["Todos"] + stats.get("municipalities", [])
-        cat_filter = st.selectbox("Categoría", categories)
-        mun_filter = st.selectbox("Municipio", municipalities)
+    with col_btn:
+        search_btn = st.button("Buscar", type="primary", use_container_width=True)
+    with col_clear:
+        if st.button("Limpiar", use_container_width=True):
+            st.session_state.explore_search_counter += 1
+            st.session_state.pop("explore_active_query", None)
+            st.rerun()
 
-    if query:
+    if search_btn and query:
+        st.session_state.explore_active_query = query
+
+    active_query = st.session_state.get("explore_active_query", "")
+
+    # ── Listado ───────────────────────────────────────────────────────────────
+    PAGE_SIZE = 20
+
+    if active_query:
+        backend_cat = cat_filter[0] if len(cat_filter) == 1 else None
+        backend_mun = mun_filter[0] if len(mun_filter) == 1 else None
+
         with st.spinner("Buscando…"):
             result = _api_post("/api/pois/search", {
-                "query": query, "k": 15,
-                "category_filter":    None if cat_filter == "Todos" else cat_filter,
-                "municipality_filter": None if mun_filter == "Todos" else mun_filter,
+                "query": active_query,
+                "k": 20,
+                "category_filter":    backend_cat,
+                "municipality_filter": backend_mun,
             })
+
         if result:
-            st.success(f"**{result['total']}** resultados para «{query}»")
-            for item in result.get("results", []):
-                poi   = item["poi"]
-                score = item["score"]
-                _render_browser_poi_card(poi, score=score)
+            hits = result.get("results", [])
+            if len(cat_filter) > 1:
+                hits = [h for h in hits if h["poi"].get("category") in cat_filter]
+            if len(mun_filter) > 1:
+                hits = [h for h in hits if h["poi"].get("municipality") in mun_filter]
+
+            if not hits:
+                st.info(f"Sin resultados semánticos para «{active_query}» con los filtros actuales.")
+            else:
+                st.success(f"**{len(hits)}** resultados para «{active_query}»")
+                for item in hits:
+                    _render_browser_poi_card(item["poi"], score=item["score"])
     else:
-        params = {}
-        if cat_filter != "Todos":
-            params["category"] = cat_filter
-        if mun_filter != "Todos":
-            params["municipality"] = mun_filter
-        result = _api_get("/api/pois", params=params)
-        if result:
-            st.info(f"**{result['total']}** POIs en la colección.")
-            for poi in result.get("pois", []):
+        if not filtered_pois:
+            st.info("No hay POIs que mostrar con los filtros seleccionados.")
+        else:
+            page_key = "explore_page"
+            if page_key not in st.session_state:
+                st.session_state[page_key] = 0
+
+            total = len(filtered_pois)
+            total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+            page = st.session_state[page_key]
+            page = max(0, min(page, total_pages - 1))
+            st.session_state[page_key] = page
+
+            start = page * PAGE_SIZE
+            page_pois = filtered_pois[start : start + PAGE_SIZE]
+
+            st.info(f"**{total}** POIs — página {page + 1} de {total_pages}")
+            for poi in page_pois:
                 _render_browser_poi_card(poi)
+
+            col_prev, col_info, col_next = st.columns([1, 3, 1])
+            with col_prev:
+                if st.button("← Anterior", disabled=(page == 0), use_container_width=True):
+                    st.session_state[page_key] -= 1
+                    st.rerun()
+            with col_info:
+                st.markdown(
+                    f'<div style="text-align:center;color:var(--muted);padding-top:.4rem">'
+                    f'Mostrando {start + 1}–{min(start + PAGE_SIZE, total)} de {total}</div>',
+                    unsafe_allow_html=True,
+                )
+            with col_next:
+                if st.button("Siguiente →", disabled=(page >= total_pages - 1), use_container_width=True):
+                    st.session_state[page_key] += 1
+                    st.rerun()
 
 
 # ---------------------------------------------------------------------------

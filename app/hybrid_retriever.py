@@ -181,3 +181,6 @@ class HybridRetriever:
         if self.fusion == "linear":
             return _linear_fusion(dense_raw, bm25_raw, self.linear_alpha)[:k]
         return _rrf_fusion(dense_raw, bm25_raw, self.rrf_k)[:k]
+
+    def search_by_text(self, query: str, k: int = 10) -> List[Tuple[POI, float]]:
+        return self.retrieve_raw(query, k=k)
