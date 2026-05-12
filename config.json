@@ -49,15 +49,15 @@
     "path": "data/pois_bilbao_bizkaia.json"
   },
   "scoring_weights": {
-    "semantic": 0.30,
-    "rerank": 0.35,
-    "preference_match": 0.25,
+    "semantic": 0.50,
+    "rerank": 0.20,
+    "preference_match": 0.20,
     "spatial_diversity": 0.10
   },
   "retrieval": {
     "mode": "hybrid",
     "fusion": "rrf",
-    "rrf_k": 60,
-    "linear_alpha": 0.5
+    "rrf_k": 10,
+    "linear_alpha": 0.7
   }
 }

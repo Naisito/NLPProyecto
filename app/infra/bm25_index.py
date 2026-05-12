@@ -4,7 +4,11 @@ import os
 import pickle
 from typing import Dict, List, Optional, Tuple
 
+from nltk.stem import SnowballStemmer
+
 logger = logging.getLogger("turismo_rag")
+
+_SPANISH_STEMMER = SnowballStemmer("spanish")
 
 # ~150 stopwords castellanas
 _SPANISH_STOPWORDS: frozenset = frozenset({
@@ -63,9 +67,13 @@ _SPANISH_STOPWORDS: frozenset = frozenset({
 
 
 def _tokenize(text: str) -> List[str]:
-    """Tokenizador simple español: lowercase + split + filtro de stopwords + len>1."""
+    """Tokenizador español con stemming Snowball: lowercase + split + stem + stopwords."""
     tokens = text.lower().split()
-    return [t for t in tokens if t not in _SPANISH_STOPWORDS and len(t) > 1]
+    return [
+        _SPANISH_STEMMER.stem(t)
+        for t in tokens
+        if t not in _SPANISH_STOPWORDS and len(t) > 1
+    ]
 
 
 class BM25Index:

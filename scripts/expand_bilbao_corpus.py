@@ -685,8 +685,8 @@ def build_enriched_text(
     chunks = [
         name,
         municipality,
-        f"Categoría {category}",
-        f"Subcategoría {subcategory}",
+        category,
+        subcategory,
         description,
         address,
         ", ".join(semantic_tags),

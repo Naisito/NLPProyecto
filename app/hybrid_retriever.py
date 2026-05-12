@@ -116,8 +116,13 @@ class HybridRetriever:
         # 1. Dense retrieval (sin límite estricto para dejar margen al RRF)
         dense_raw = self.dense.retrieve(preferences, k=k * 2)
 
-        # 2. BM25 retrieval
-        query = _build_query(preferences)
+        # 2. BM25 retrieval — usar la misma query expandida que dense
+        self.dense._ensure_category_embeddings()
+        query = _build_query(
+            preferences,
+            embedder=self.dense.embedder,
+            category_embeddings=self.dense._category_embeddings,
+        )
         bm25_raw_idx = self.bm25.search(query, k=k * 2)
 
         bm25_raw: List[Tuple[POI, float]] = []
