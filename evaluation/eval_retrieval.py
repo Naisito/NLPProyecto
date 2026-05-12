@@ -88,22 +88,36 @@ def _build_reranker():
 # Funciones de retrieval por modo
 # ---------------------------------------------------------------------------
 
-def _enrich_eval_query(query: str) -> str:
-    """Expande la query de evaluación con sinónimos del dominio turístico."""
-    from app.retriever import INTEREST_QUERY_MAP, _strip_negations
-    query_lower = query.lower()
-    terms = []
+def _enrich_eval_query(query: str, retriever) -> str:
+    """Construye query enriquecida imitando _build_query en producción."""
+    from app.retriever import INTEREST_QUERY_MAP, _build_query, _strip_negations
+    from app.models import UserPreferences
+
+    query = _strip_negations(query.lower())
+    interests = []
+
     for interest, expansion in INTEREST_QUERY_MAP.items():
-        if interest in query_lower:
-            terms.append(expansion)
-    if terms:
-        query = f"{query} {' '.join(terms)}"
-    return _strip_negations(query)
+        if interest in query:
+            interests.append(interest)
+            continue
+        for term in expansion.split():
+            if len(term) > 3 and term in query:
+                interests.append(interest)
+                break
+
+    scope = "Bizkaia" if any(w in query for w in ("bizkaia", "costa", "rural", "pueblos")) else "Bilbao"
+
+    prefs = UserPreferences(
+        interests=list(set(interests)) if interests else ["turismo"],
+        city_scope=scope,
+    )
+    retriever._ensure_category_embeddings()
+    return _build_query(prefs, retriever.embedder, retriever._category_embeddings)
 
 
 def retrieve_dense(query: str, k: int, retriever) -> List[str]:
     """Devuelve lista de poi_ids usando solo el retriever semántico denso."""
-    query = _enrich_eval_query(query)
+    query = _enrich_eval_query(query, retriever)
     results = retriever.search_by_text(query, k=k)
     return [poi.id for poi, _ in results]
 
@@ -111,7 +125,7 @@ def retrieve_dense(query: str, k: int, retriever) -> List[str]:
 def retrieve_dense_reranked(query: str, k: int, retriever, reranker) -> List[str]:
     """Dense retrieval seguido de cross-encoder reranking."""
     from app.models import UserPreferences
-    query = _enrich_eval_query(query)
+    query = _enrich_eval_query(query, retriever)
     candidates = retriever.search_by_text(query, k=k)
     if not candidates:
         return []
@@ -138,7 +152,7 @@ def retrieve_hybrid(
     poi_manager,
 ) -> List[str]:
     """Retrieval híbrido (dense + BM25 con RRF o linear)."""
-    query = _enrich_eval_query(query)
+    query = _enrich_eval_query(query, hybrid_retriever.dense)
     results = hybrid_retriever.retrieve_raw(query, k=k)
     return [poi.id for poi, _ in results]
 
