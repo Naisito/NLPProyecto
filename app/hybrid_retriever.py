@@ -9,16 +9,6 @@ from app.retriever import SCOPE_FILTER, SemanticRetriever, _build_query, _strip_
 logger = logging.getLogger("turismo_rag")
 
 
-def _lexical_boost(poi: POI, query: str, factor: float = 0.06) -> float:
-    """Pequeño boost si los tokens de la query aparecen en category/subcategory/tags del POI."""
-    query_tokens = set(query.lower().split())
-    if not query_tokens:
-        return 1.0
-    poi_text = f"{poi.category} {poi.subcategory} {' '.join(poi.tags)}".lower()
-    hits = sum(1 for t in query_tokens if len(t) > 2 and t in poi_text)
-    return 1.0 + factor * hits
-
-
 def _rrf_fusion(
     dense_ranked: List[Tuple[POI, float]],
     bm25_ranked: List[Tuple[POI, float]],
@@ -171,9 +161,6 @@ class HybridRetriever:
             if daily_budget < 30 and poi.price_numeric == 0.0:
                 score *= 1.1
 
-            # Boost léxico: términos de la query en category/subcategory/tags
-            score *= _lexical_boost(poi, query)
-
             candidates.append((poi, score))
             if len(candidates) >= k:
                 break
@@ -202,7 +189,7 @@ class HybridRetriever:
         else:
             fused = _rrf_fusion(dense_raw, bm25_raw, self.rrf_k)
 
-        return [(poi, score * _lexical_boost(poi, cleaned)) for poi, score in fused[:k]]
+        return fused[:k]
 
     def search_by_text(self, query: str, k: int = 10) -> List[Tuple[POI, float]]:
         return self.retrieve_raw(query, k=k)
