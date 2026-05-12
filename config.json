@@ -43,7 +43,7 @@
     "request_timeout_seconds": 1800,
     "temperature_generation": 0.5,
     "temperature_interpretation": 0.1,
-    "max_tokens_generation": 800
+    "max_tokens_generation": 4000
   },
   "poi_data": {
     "path": "data/pois_bilbao_bizkaia.json"
