@@ -85,13 +85,38 @@ class POIRanker:
     def _load_cross_encoder(self, model_name: str, cache_dir: str):
         try:
             import os
+            import sys
+            import time
+            import threading
             from huggingface_hub import snapshot_download
             from sentence_transformers.cross_encoder import CrossEncoder
 
             os.makedirs(cache_dir, exist_ok=True)
-            model_path = snapshot_download(repo_id=model_name, cache_dir=cache_dir, local_files_only=True)
-            self.cross_encoder = CrossEncoder(model_path, max_length=512, local_files_only=True)
-            logger.info(f"Cross-encoder '{model_name}' cargado.")
+            logger.info(
+                f"Cargando cross-encoder '{model_name}' "
+                f"(puede tardar varios minutos en CPU, NO se ha congelado)"
+            )
+
+            stop_spinner = threading.Event()
+
+            def _dot_feedback():
+                while not stop_spinner.is_set():
+                    stop_spinner.wait(10)
+                    if not stop_spinner.is_set():
+                        print(".", end="", flush=True)
+
+            spinner = threading.Thread(target=_dot_feedback, daemon=True)
+            try:
+                spinner.start()
+                t0 = time.perf_counter()
+                model_path = snapshot_download(repo_id=model_name, cache_dir=cache_dir)
+                self.cross_encoder = CrossEncoder(model_path, max_length=512)
+                elapsed = time.perf_counter() - t0
+                stop_spinner.set()
+                logger.info("Cross-encoder '%s' cargado (%.1f s).", model_name, elapsed)
+            except Exception:
+                stop_spinner.set()
+                raise
         except Exception as e:
             logger.warning(f"No se pudo cargar el cross-encoder: {e}")
             self.cross_encoder = None

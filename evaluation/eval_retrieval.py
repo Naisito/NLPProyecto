@@ -16,7 +16,7 @@ if str(_ROOT) not in sys.path:
 
 from evaluation.metrics import compute_all
 
-logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("eval_retrieval")
 
 
@@ -52,15 +52,23 @@ def _build_retriever(k: int):
     from app.poi_manager import POIManager
     from app.retriever import SemanticRetriever
 
+    print("[eval_retrieval] [1/4] Cargando modelo de embeddings...")
     embedder = LocalHuggingFaceEmbeddings(
         model_name=settings.embeddings["model_name"],
         cache_dir=settings.embeddings.get("cache_dir", "models_cache"),
     )
+
+    print("[eval_retrieval] [2/4] Conectando a ChromaDB...")
     vector_store = LocalChromaIndex(
         db_path=settings.vector_db["path"],
         collection_name=settings.vector_db["collection_name"],
     )
+
+    print("[eval_retrieval] [3/4] Cargando POIs y verificando índice vectorial...")
     poi_manager = POIManager(embedder=embedder, vector_store=vector_store)
+    poi_manager.load_pois()
+
+    print("[eval_retrieval] [4/4] Construyendo SemanticRetriever...")
     retriever = SemanticRetriever(
         embedder=embedder,
         vector_store=vector_store,
@@ -72,6 +80,7 @@ def _build_retriever(k: int):
 
 def _build_reranker():
     from app.ranker import POIRanker
+    print("[eval_retrieval] Cargando modelo de reranker (cross-encoder)...")
     return POIRanker()
 
 
@@ -216,6 +225,27 @@ def print_markdown_table(results: Dict[str, Any], mode_label: str) -> None:
     print(f"| {mode_label:<13} | {r5:.4f}   | {r10:.4f}    | {mrr_val:.4f} | {ndcg_val:.4f}  | {map_val:.4f} | {lat_val:.1f} |")
 
 
+def print_compare_table(all_results: list) -> None:
+    """Imprime una tabla comparativa unificada de todos los modos evaluados.
+
+    Args:
+        all_results: Lista de tuplas (label, results_dict) ordenadas.
+    """
+    print(f"\n## Comparativa de Modos de Retrieval\n")
+    print(f"| Configuración      | Recall@5 | Recall@10 | MRR    | NDCG@10 | MAP    | Latencia (ms) |")
+    print(f"|--------------------|----------|-----------|--------|---------|--------|---------------|")
+
+    for label, res in all_results:
+        agg = res["aggregate"]
+        r5  = agg.get("recall@5", 0)
+        r10 = agg.get("recall@10", 0)
+        mrr_val  = agg.get("mrr", 0)
+        ndcg_val = agg.get("ndcg@10", 0)
+        map_val  = agg.get("ap", 0)
+        lat_val  = agg.get("latency_median_ms", 0)
+        print(f"| {label:<18} | {r5:.4f}   | {r10:.4f}    | {mrr_val:.4f} | {ndcg_val:.4f}  | {map_val:.4f} | {lat_val:.1f}        |")
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -229,8 +259,8 @@ def parse_args() -> argparse.Namespace:
         help="Ruta al archivo gold_set.json",
     )
     parser.add_argument(
-        "--mode", choices=["dense", "bm25", "hybrid"], default="dense",
-        help="Modo de retrieval a evaluar.",
+        "--mode", choices=["dense", "bm25", "hybrid", "compare"], default="dense",
+        help="Modo de retrieval a evaluar. 'compare' ejecuta todos los modos.",
     )
     parser.add_argument(
         "--with-reranker", action="store_true",
@@ -258,7 +288,81 @@ def main() -> None:
     queries = load_gold_set(args.gold)
     print(f"[eval_retrieval] {len(queries)} queries cargadas.")
 
-    if args.mode == "bm25":
+    if args.mode == "compare":
+        # -----------------------------------------------------------------
+        # Modo comparativa: ejecuta todos los modos secuencialmente
+        # -----------------------------------------------------------------
+        print("[eval_retrieval] Inicializando todos los componentes (puede tardar)...")
+        retriever, poi_manager = _build_retriever(args.k)
+        reranker = _build_reranker()
+
+        # BM25 puro (índice sobre enriched_text)
+        from app.infra.bm25_index import BM25Index
+        print("[eval_retrieval] Construyendo índice BM25 puro...")
+        bm25_index = BM25Index()
+        all_pois = poi_manager.get_all()
+        bm25_texts = [p.enriched_text for p in all_pois]
+        bm25_index.build(bm25_texts)
+
+        # BM25 para híbrido (índice sobre textos mapeados por HybridRetriever)
+        from app.hybrid_retriever import HybridRetriever
+        print("[eval_retrieval] Construyendo índice BM25 para híbridos...")
+        hyb_texts, idx_map = HybridRetriever.build_bm25_mapping(all_pois)
+        bm25_hybrid = BM25Index()
+        bm25_hybrid.build(hyb_texts)
+
+        # Híbrido RRF
+        hybrid_rrf = HybridRetriever(
+            dense_retriever=retriever,
+            bm25_index=bm25_hybrid,
+            poi_id_by_bm25_idx=idx_map,
+            id_to_poi=poi_manager.get_by_id,
+        )
+        hybrid_rrf.fusion = "rrf"
+
+        # Híbrido linear
+        hybrid_linear = HybridRetriever(
+            dense_retriever=retriever,
+            bm25_index=bm25_hybrid,
+            poi_id_by_bm25_idx=idx_map,
+            id_to_poi=poi_manager.get_by_id,
+        )
+        hybrid_linear.fusion = "linear"
+        if args.alpha is not None:
+            hybrid_linear.linear_alpha = args.alpha
+
+        print("[eval_retrieval] Construyendo índices BM25 e híbridos...")
+        modes = [
+            ("Dense (bge-m3)",      lambda q, k: retrieve_dense(q, k, retriever)),
+            ("Dense + Reranker",     lambda q, k: retrieve_dense_reranked(q, k, retriever, reranker)),
+            ("BM25",                 lambda q, k: retrieve_bm25(q, k, bm25_index, poi_manager)),
+            ("Hybrid (rrf)",         lambda q, k: retrieve_hybrid(q, k, hybrid_rrf, poi_manager)),
+            ("Hybrid (linear)",      lambda q, k: retrieve_hybrid(q, k, hybrid_linear, poi_manager)),
+        ]
+
+        all_results = []
+        for label, fn in modes:
+            print(f"\n[eval_retrieval] Evaluando modo '{label}' ({len(queries)} queries)...")
+            res = evaluate(queries, fn, k=args.k)
+            print_markdown_table(res, label)
+            all_results.append((label, res))
+
+        print_compare_table(all_results)
+
+        if args.output:
+            os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+            out_data = {
+                "mode": "compare",
+                "k": args.k,
+                "gold_set": args.gold,
+                "n_queries": len(queries),
+                "results": [{"label": label, **res} for label, res in all_results],
+            }
+            with open(args.output, "w", encoding="utf-8") as f:
+                json.dump(out_data, f, ensure_ascii=False, indent=2)
+            print(f"\n[eval_retrieval] Métricas guardadas en: {args.output}")
+
+    elif args.mode == "bm25":
         # Modo BM25: construir índice desde POIs
         print("[eval_retrieval] Construyendo índice BM25...")
         retriever, poi_manager = _build_retriever(args.k)
@@ -270,6 +374,24 @@ def main() -> None:
 
         mode_label = "BM25"
         retrieve_fn = lambda q, k: retrieve_bm25(q, k, bm25_index, poi_manager)
+
+        print(f"[eval_retrieval] Evaluando {len(queries)} queries en modo '{mode_label}'...")
+        results = evaluate(queries, retrieve_fn, k=args.k)
+        print_markdown_table(results, mode_label)
+
+        if args.output:
+            os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+            out_data = {
+                "mode": args.mode,
+                "with_reranker": args.with_reranker,
+                "k": args.k,
+                "gold_set": args.gold,
+                "n_queries": len(queries),
+                **results,
+            }
+            with open(args.output, "w", encoding="utf-8") as f:
+                json.dump(out_data, f, ensure_ascii=False, indent=2)
+            print(f"\n[eval_retrieval] Métricas guardadas en: {args.output}")
 
     elif args.mode == "hybrid":
         # Modo híbrido: dense + BM25 con RRF/linear
@@ -298,6 +420,24 @@ def main() -> None:
 
         retrieve_fn = lambda q, k: retrieve_hybrid(q, k, hybrid, poi_manager)
 
+        print(f"[eval_retrieval] Evaluando {len(queries)} queries en modo '{mode_label}'...")
+        results = evaluate(queries, retrieve_fn, k=args.k)
+        print_markdown_table(results, mode_label)
+
+        if args.output:
+            os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+            out_data = {
+                "mode": args.mode,
+                "with_reranker": args.with_reranker,
+                "k": args.k,
+                "gold_set": args.gold,
+                "n_queries": len(queries),
+                **results,
+            }
+            with open(args.output, "w", encoding="utf-8") as f:
+                json.dump(out_data, f, ensure_ascii=False, indent=2)
+            print(f"\n[eval_retrieval] Métricas guardadas en: {args.output}")
+
     else:
         # ---- Modo dense ----
         print("[eval_retrieval] Inicializando componentes RAG (puede tardar)...")
@@ -317,24 +457,23 @@ def main() -> None:
         else:
             retrieve_fn = lambda q, k: retrieve_dense(q, k, retriever)
 
-    print(f"[eval_retrieval] Evaluando {len(queries)} queries en modo '{mode_label}'...")
-    results = evaluate(queries, retrieve_fn, k=args.k)
+        print(f"[eval_retrieval] Evaluando {len(queries)} queries en modo '{mode_label}'...")
+        results = evaluate(queries, retrieve_fn, k=args.k)
+        print_markdown_table(results, mode_label)
 
-    print_markdown_table(results, mode_label)
-
-    if args.output:
-        os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
-        out_data = {
-            "mode": args.mode,
-            "with_reranker": args.with_reranker,
-            "k": args.k,
-            "gold_set": args.gold,
-            "n_queries": len(queries),
-            **results,
-        }
-        with open(args.output, "w", encoding="utf-8") as f:
-            json.dump(out_data, f, ensure_ascii=False, indent=2)
-        print(f"\n[eval_retrieval] Métricas guardadas en: {args.output}")
+        if args.output:
+            os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+            out_data = {
+                "mode": args.mode,
+                "with_reranker": args.with_reranker,
+                "k": args.k,
+                "gold_set": args.gold,
+                "n_queries": len(queries),
+                **results,
+            }
+            with open(args.output, "w", encoding="utf-8") as f:
+                json.dump(out_data, f, ensure_ascii=False, indent=2)
+            print(f"\n[eval_retrieval] Métricas guardadas en: {args.output}")
 
 
 if __name__ == "__main__":

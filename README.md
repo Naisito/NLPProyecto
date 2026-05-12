@@ -131,6 +131,9 @@ python -m evaluation.eval_retrieval --gold evaluation/gold_set.json --mode hybri
 
 # Con reranker
 python -m evaluation.eval_retrieval --gold evaluation/gold_set.json --mode dense --with-reranker
+
+# Comparativa
+python -m evaluation.eval_retrieval --gold evaluation/gold_set.json --mode compare --output results/compare.json
 ```
 
 El gold set tiene 40 queries anotadas en 5 grupos: interés principal (10), multi-interés (5), restricciones (5), paráfrasis (10) y adversariales (10). Métricas: Recall@k, Precision@k, MRR, NDCG@10, MAP y latencia mediana.

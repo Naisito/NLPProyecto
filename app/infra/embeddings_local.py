@@ -1,5 +1,8 @@
 import os
 import logging
+import sys
+import time
+import threading
 from typing import List
 
 from sentence_transformers import SentenceTransformer
@@ -17,16 +20,43 @@ class LocalHuggingFaceEmbeddings(EmbeddingClient):
             cache_dir = os.path.join(base, "models_cache")
 
         os.makedirs(cache_dir, exist_ok=True)
-        logger.info(f"Cargando modelo de embeddings '{model_name}' desde: {cache_dir}")
+
+        device = os.environ.get("SENTENCE_TRANSFORMERS_DEVICE", "cpu")
+        logger.info(
+            f"Cargando modelo de embeddings '{model_name}' en {device}... "
+            f"(puede tardar varios minutos en CPU, NO se ha congelado)"
+        )
+
+        # Evita deadlocks en Windows con tokenizers multiproceso
+        if sys.platform == "win32":
+            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+        # Hilo auxiliar que imprime un punto cada 10 s para dar feedback visual
+        stop_spinner = threading.Event()
+
+        def _dot_feedback():
+            while not stop_spinner.is_set():
+                stop_spinner.wait(10)
+                if not stop_spinner.is_set():
+                    print(".", end="", flush=True)
+
+        spinner = threading.Thread(target=_dot_feedback, daemon=True)
         try:
+            spinner.start()
+            t0 = time.perf_counter()
             self.model = SentenceTransformer(
                 model_name,
                 cache_folder=cache_dir,
                 trust_remote_code=True,
             )
+            elapsed = time.perf_counter() - t0
+            stop_spinner.set()
             self.model_name = model_name
-            logger.info("Modelo de embeddings cargado correctamente.")
+            logger.info(
+                "Modelo de embeddings cargado correctamente (%.1f s).", elapsed
+            )
         except Exception as e:
+            stop_spinner.set()
             logger.error(f"Error cargando modelo de embeddings: {e}")
             raise
 
