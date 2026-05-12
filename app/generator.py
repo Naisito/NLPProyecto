@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from typing import Generator, List, Optional
 
+import httpx
 from openai import OpenAI
 
 from app.config import settings
@@ -141,17 +142,26 @@ def interpret_preferences(query: str) -> UserPreferences:
     logger.info("─── OLLAMA → [interpret_preferences] modelo=%s — esperando respuesta… ───", _model)
     logger.debug("  USER PROMPT: %s", query)
     try:
-        response = client.chat.completions.create(
-            model=_model,
-            messages=[
-                {"role": "system", "content": _INTERP_SYSTEM},
-                {"role": "user",   "content": query},
-            ],
-            temperature=_temp_interp,
-            max_tokens=500,
-            response_format={"type": "json_object"},
+        # Usamos la API nativa de Ollama para poder pasar think=false con modelos thinking
+        resp = httpx.post(
+            f"{_base_url}/api/chat",
+            json={
+                "model": _model,
+                "messages": [
+                    {"role": "system", "content": _INTERP_SYSTEM},
+                    {"role": "user",   "content": query},
+                ],
+                "think": False,
+                "stream": False,
+                "options": {
+                    "temperature": _temp_interp,
+                    "num_predict": 500,
+                },
+            },
+            timeout=_timeout,
         )
-        raw = response.choices[0].message.content.strip()
+        resp.raise_for_status()
+        raw = resp.json()["message"]["content"].strip()
         logger.info("─── OLLAMA ← [interpret_preferences] %d chars ───", len(raw))
         logger.debug("  RAW RESPONSE: %s", raw[:500])
         parsed = _extract_json(raw)

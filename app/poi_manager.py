@@ -21,7 +21,10 @@ def _parse_poi(raw: dict) -> POI:
 
     schedule: Dict[str, Optional[Schedule]] = {}
     for day, value in raw.get("schedule", {}).items():
-        schedule[day] = None if value is None else Schedule(open=value["open"], close=value["close"])
+        if value is None or value.get("open") is None or value.get("close") is None:
+            schedule[day] = None
+        else:
+            schedule[day] = Schedule(open=value["open"], close=value["close"])
 
     return POI(
         id=raw["id"],
