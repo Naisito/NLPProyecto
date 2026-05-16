@@ -59,5 +59,9 @@
     "fusion": "rrf",
     "rrf_k": 60,
     "linear_alpha": 0.5
+  },
+  "bm25": {
+    "k1": 1.5,
+    "b": 0.75
   }
 }

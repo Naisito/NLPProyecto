@@ -1,0 +1,122 @@
+name: Hiperparameter Search + Compare Retrieval
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Tipo de barrido"
+        required: true
+        type: choice
+        default: "fast+reranker"
+        options:
+          - fast
+          - fast+reranker
+          - full
+          - full+reranker
+
+jobs:
+  sweep-and-compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Cache HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: models_cache
+          key: hf-models-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            hf-models-${{ runner.os }}-
+
+      - name: Cache ChromaDB index
+        uses: actions/cache@v4
+        with:
+          path: db/chroma_db
+          key: chromadb-${{ runner.os }}-${{ hashFiles('data/pois_bilbao_bizkaia.json') }}
+          restore-keys: |
+            chromadb-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ─────────────────────────────────────────────────────────────
+      # Paso 1: Barrido de hiperparámetros → parchea config.json
+      # ─────────────────────────────────────────────────────────────
+      - name: "Paso 1: Hiperparameter sweep"
+        id: sweep
+        shell: bash
+        env:
+          HF_HUB_CACHE: models_cache
+          TRANSFORMERS_CACHE: models_cache
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          FLAGS="--gold evaluation/gold_set.json --output results/hyper_search.json --top 15 --apply-best --config-path ./config.json"
+
+          case "$MODE" in
+            fast)
+              FLAGS="$FLAGS --fast --no-reranker"
+              ;;
+            fast+reranker)
+              FLAGS="$FLAGS --fast --with-reranker-only"
+              ;;
+            full)
+              FLAGS="$FLAGS --no-reranker"
+              ;;
+            full+reranker)
+              FLAGS="$FLAGS --with-reranker-only"
+              ;;
+          esac
+
+          echo "[hyper_search] Ejecutando: python -m evaluation.hyperparameter_search $FLAGS"
+          python -m evaluation.hyperparameter_search $FLAGS
+
+      # ─────────────────────────────────────────────────────────────
+      # Paso 2: Comparativa con los mejores parámetros
+      # ─────────────────────────────────────────────────────────────
+      - name: "Paso 2: Comparativa de retrieval"
+        id: compare
+        env:
+          HF_HUB_CACHE: models_cache
+          TRANSFORMERS_CACHE: models_cache
+        run: |
+          echo "[eval_retrieval] Ejecutando compare con config.json optimizado..."
+          python -m evaluation.eval_retrieval --gold evaluation/gold_set.json --mode compare --output results/compare.json
+
+      # ─────────────────────────────────────────────────────────────
+      # Artifacts
+      # ─────────────────────────────────────────────────────────────
+      - name: Upload sweep results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyper-search-results
+          path: results/hyper_search.json
+
+      - name: Upload compare results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compare-results
+          path: results/compare.json
+
+      - name: Upload patched config
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: best-config
+          path: config.json

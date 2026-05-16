@@ -79,6 +79,11 @@ class _ScoringWeightsConfig(BaseModel):
     spatial_diversity: float = Field(0.10, ge=0.0, le=1.0)
 
 
+class _BM25Config(BaseModel):
+    k1: float = Field(1.5, gt=0.0)
+    b: float = Field(0.75, ge=0.0, le=1.0)
+
+
 class _RetrievalConfig(BaseModel):
     mode: str = "dense"
     fusion: str = "rrf"
@@ -111,6 +116,7 @@ class _AppConfig(BaseModel):
     poi_data: _POIDataConfig = Field(default_factory=_POIDataConfig)
     scoring_weights: _ScoringWeightsConfig = Field(default_factory=_ScoringWeightsConfig)
     retrieval: _RetrievalConfig = Field(default_factory=_RetrievalConfig)
+    bm25: _BM25Config = Field(default_factory=_BM25Config)
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +146,7 @@ class Settings:
         self.poi_data = config.poi_data.model_dump()
         self.scoring_weights = config.scoring_weights.model_dump()
         self.retrieval = config.retrieval.model_dump()
+        self.bm25 = config.bm25.model_dump()
 
         env_ollama_url = os.environ.get("OLLAMA_BASE_URL")
         if env_ollama_url:

@@ -79,9 +79,10 @@ def _tokenize(text: str) -> List[str]:
 class BM25Index:
     """Índice BM25 para retrieval lexical con tokenizador español (k1=1.5, b=0.75)."""
 
-    def __init__(self, k1: float = 1.5, b: float = 0.75):
-        self.k1 = k1
-        self.b = b
+    def __init__(self, k1: float = None, b: float = None):
+        from app.config import settings as _global_settings
+        self.k1 = k1 if k1 is not None else _global_settings.bm25.get("k1", 1.5)
+        self.b = b if b is not None else _global_settings.bm25.get("b", 0.75)
 
         self._documents: List[str] = []
         self._doc_tokens: List[List[str]] = []
