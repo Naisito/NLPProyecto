@@ -35,7 +35,7 @@ Texto del usuario
     → Reranking con cross-encoder
     → Planificación geográfica + 2-opt
     → Narrativa generada por LLM
-    → Evaluación automática (7 métricas)
+    → Evaluación automática (7 métricas base + puntuación global)
 ```
 
 ### Recuperación (RAG)
@@ -59,7 +59,7 @@ La expansión semántica de queries busca automáticamente categorías del corpu
 
 ### Generación y evaluación
 
-El LLM local (Ollama) genera una narrativa en castellano con los datos del itinerario. El evaluador calcula 7 métricas automáticas: cobertura de preferencias, coherencia temporal, compacidad geográfica, adherencia al presupuesto, diversidad, accesibilidad y puntuación global.
+El LLM local (Ollama) genera una narrativa en castellano con los datos del itinerario. El evaluador calcula 7 métricas base (satisfacción de restricciones, cobertura de preferencias, coherencia temporal, compacidad geográfica, adherencia al presupuesto, diversidad de categorías, cumplimiento de accesibilidad) y una puntuación global ponderada.
 
 El endpoint `/api/route/stream` expone el progreso de cada etapa vía Server-Sent Events (SSE), permitiendo al frontend mostrar el avance en tiempo real. Las rutas generadas se persisten en SQLite y pueden consultarse en el historial (`/api/routes/saved`).
 
@@ -232,7 +232,7 @@ El proyecto incluye dos workflows de evaluación automática (disparo manual des
 │   ├── ranker.py            # Reranking compuesto
 │   ├── planner.py           # Planificación geográfica + 2-opt
 │   ├── generator.py         # Narrativa LLM + interpretación de preferencias
-│   ├── evaluator.py         # Métricas automáticas (7 métricas)
+│   ├── evaluator.py         # Métricas automáticas (7 base + global)
 │   ├── poi_manager.py       # Carga e indexación de POIs
 │   ├── route_store.py       # Persistencia SQLite (historial de rutas)
 │   └── infra/
