@@ -165,7 +165,7 @@ Sin Ollama el sistema funciona igual (retrieval + ranking + planificación), sol
 
 ## Corpus
 
-1109 POIs de Bilbao (465) y Bizkaia (644) con datos de OSM, Open Data Euskadi y Wikidata. Campos: nombre, municipio, categoría, subcategoría, coordenadas, horarios por día, precio, accesibilidad, tags, texto enriquecido para indexación.
+3376 POIs de Bilbao (790) y Bizkaia (2586) con datos de OSM, Open Data Euskadi y Wikidata. Campos: nombre, municipio, categoría, subcategoría, coordenadas, horarios por día, precio, accesibilidad, tags, texto enriquecido para indexación.
 
 El corpus se regenera con `python scripts/expand_bilbao_corpus.py`.
 
